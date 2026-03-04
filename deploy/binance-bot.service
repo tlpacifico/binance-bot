@@ -1,0 +1,28 @@
+[Unit]
+Description=BTC/EUR Trading Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Contabo default user is root, but we run as a dedicated user for security
+User=DEPLOY_USER
+WorkingDirectory=/home/DEPLOY_USER/binance-bot
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+# Logging goes to journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=binance-bot
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/DEPLOY_USER/binance-bot/data
+
+[Install]
+WantedBy=multi-user.target
