@@ -1,6 +1,6 @@
 services:
   binance-bot:
-    image: ghcr.io/thacio/binance-bot:latest
+    image: ghcr.io/tlpacifico/binance-bot:latest
     container_name: binance-bot
     restart: unless-stopped
     ports:
