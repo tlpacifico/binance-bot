@@ -1,5 +1,5 @@
 import ccxt from 'ccxt';
-import { TradeRecord } from './types';
+import { PriceData, TradeRecord } from './types';
 
 export class BinanceClient {
   private exchange: InstanceType<typeof ccxt.binance>;
@@ -23,13 +23,17 @@ export class BinanceClient {
     await this.exchange.loadTimeDifference();
   }
 
-  async getPrice(pair: string): Promise<number> {
+  async getPrice(pair: string): Promise<PriceData> {
     const ticker = await this.exchange.fetchTicker(pair);
-    const price = ticker.last;
-    if (!price || price <= 0) {
-      throw new Error(`Invalid price received: ${price}`);
+    const last = ticker.last;
+    const low24h = ticker.low;
+    if (!last || last <= 0) {
+      throw new Error(`Invalid price received: ${last}`);
     }
-    return price;
+    if (!low24h || low24h <= 0) {
+      throw new Error(`Invalid 24h low received: ${low24h}`);
+    }
+    return { last, low24h };
   }
 
   async marketBuy(pair: string, eurAmount: number): Promise<TradeRecord> {
@@ -44,7 +48,7 @@ export class BinanceClient {
     return this.toTradeRecord(order, 'SELL');
   }
 
-  async getLastTrade(pair: string): Promise<{ price: number; side: string } | null> {
+  async getLastTrade(pair: string): Promise<{ price: number; side: string; timestamp: string } | null> {
     try {
       const trades = await this.exchange.fetchMyTrades(pair, undefined, undefined, { limit: 1 });
       if (trades.length === 0) return null;
@@ -52,6 +56,7 @@ export class BinanceClient {
       return {
         price: last.price,
         side: (last.side || 'buy').toUpperCase(),
+        timestamp: last.datetime || (last.timestamp ? new Date(last.timestamp).toISOString() : new Date().toISOString()),
       };
     } catch {
       return null;

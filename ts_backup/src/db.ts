@@ -7,6 +7,7 @@ export interface SavedState {
   btcBalance: number;
   eurBalance: number;
   initialBalanceEur: number;
+  lastTradeTimestamp: string | null;
 }
 
 export function initDb(dbPath: string): Database.Database {
@@ -47,6 +48,7 @@ export function getState(db: Database.Database): SavedState | null {
     btcBalance: parseFloat(map.get('btc_balance') || '0'),
     eurBalance: parseFloat(map.get('eur_balance') || '0'),
     initialBalanceEur: parseFloat(map.get('initial_balance_eur') || '0'),
+    lastTradeTimestamp: map.get('last_trade_timestamp') || null,
   };
 }
 
@@ -57,6 +59,7 @@ export function setState(
   btcBalance: number,
   eurBalance: number,
   initialBalanceEur?: number,
+  lastTradeTimestamp?: string,
 ): void {
   const upsert = db.prepare(
     'INSERT INTO bot_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
@@ -69,6 +72,9 @@ export function setState(
     upsert.run('eur_balance', eurBalance.toString());
     if (initialBalanceEur !== undefined) {
       upsert.run('initial_balance_eur', initialBalanceEur.toString());
+    }
+    if (lastTradeTimestamp !== undefined) {
+      upsert.run('last_trade_timestamp', lastTradeTimestamp);
     }
   });
 
@@ -90,6 +96,11 @@ export function getTrades(db: Database.Database, limit = 50, offset = 0): TradeR
 export function getTradeCount(db: Database.Database): number {
   const row = db.prepare('SELECT COUNT(*) as count FROM trades').get() as { count: number };
   return row.count;
+}
+
+export function getLastTradeTimestamp(db: Database.Database): string | null {
+  const row = db.prepare('SELECT timestamp FROM trades ORDER BY id DESC LIMIT 1').get() as { timestamp: string } | undefined;
+  return row?.timestamp || null;
 }
 
 export function getTradesToday(db: Database.Database): TradeRecord[] {

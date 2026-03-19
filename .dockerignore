@@ -1,0 +1,12 @@
+.git
+.vs
+.idea
+.claude
+bin
+obj
+ts_backup
+data
+logs
+*.user
+*.suo
+.env

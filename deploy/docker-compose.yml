@@ -1,0 +1,28 @@
+services:
+  binance-bot:
+    image: ghcr.io/thacio/binance-bot:latest
+    container_name: binance-bot
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - bot-data:/app/data
+      - bot-logs:/app/logs
+    environment:
+      - Binance__ApiKey=${BINANCE_API_KEY}
+      - Binance__ApiSecret=${BINANCE_API_SECRET}
+      - Binance__UseTestnet=${BINANCE_USE_TESTNET:-false}
+      - Telegram__BotToken=${TELEGRAM_BOT_TOKEN}
+      - Telegram__ChatId=${TELEGRAM_CHAT_ID}
+      - Dashboard__AuthToken=${DASHBOARD_AUTH_TOKEN}
+      - Dashboard__Port=3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  bot-data:
+  bot-logs:

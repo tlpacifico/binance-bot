@@ -39,9 +39,10 @@ export class PriceMonitor {
 
   private async tick(): Promise<void> {
     try {
-      this.currentPrice = await this.client.getPrice(this.config.tradingPair);
-      this.logger.debug({ price: this.currentPrice }, 'Price tick');
-      await this.engine.onPriceTick(this.currentPrice);
+      const priceData = await this.client.getPrice(this.config.tradingPair);
+      this.currentPrice = priceData.last;
+      this.logger.debug({ price: this.currentPrice, low24h: priceData.low24h }, 'Price tick');
+      await this.engine.onPriceTick(priceData);
 
       // Reset failure counter on success
       if (this.consecutiveFailures > 0) {

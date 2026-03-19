@@ -1,7 +1,28 @@
-node_modules/
-dist/
-data/*.db
-data/*.db-wal
-data/*.db-shm
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.vs/
+.vs/
+*.DotSettings.user
+logs/
+
+# Data
+data/
+
+# IDE
+.idea/
+
+# Secrets
 .env
+appsettings.Development.json
+appsettings.*.json
+!appsettings.json
+
+# TypeScript backup
+ts_backup/node_modules/
+ts_backup/dist/
+
+# Logs
 *.log

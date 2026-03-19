@@ -24,6 +24,17 @@ export interface BotStatus {
   pnlPct: number;
   targetPrice: number;
   uptimeMs: number;
+  confirmation: {
+    active: boolean;
+    ticksCollected: number;
+    ticksRequired: number;
+    avgPrice: number;
+  };
+}
+
+export interface PriceData {
+  last: number;
+  low24h: number;
 }
 
 export interface AppConfig {
@@ -39,5 +50,7 @@ export interface AppConfig {
   telegramChatId: string;
   dashboardPort: number;
   dashboardAuthToken: string;
+  confirmationTicks: number;
+  staleTradeDays: number;
   logLevel: string;
 }

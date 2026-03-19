@@ -1,9 +1,9 @@
 import Database from 'better-sqlite3';
 import pino from 'pino';
-import { AppConfig, BotState, BotStatus, TradeRecord } from './types';
+import { AppConfig, BotState, BotStatus, PriceData, TradeRecord } from './types';
 import { BinanceClient } from './binance-client';
 import { TelegramNotifier } from './telegram';
-import { getState, setState, insertTrade } from './db';
+import { getState, setState, insertTrade, getLastTradeTimestamp } from './db';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [5000, 10000, 20000]; // 5s, 10s, 20s
@@ -20,6 +20,10 @@ export class TradingEngine {
   private initialBalanceEur: number;
   private busy = false;
   private initialized = false;
+  private confirmationPrices: number[] = [];
+  private confirmationActive = false;
+  private lastTradeTimestamp: string | null = null;
+  private lastLow24h = 0;
 
   constructor(
     private config: AppConfig,
@@ -35,8 +39,9 @@ export class TradingEngine {
       this.btcBalance = saved.btcBalance;
       this.eurBalance = saved.eurBalance;
       this.initialBalanceEur = saved.initialBalanceEur;
+      this.lastTradeTimestamp = saved.lastTradeTimestamp || getLastTradeTimestamp(db);
       this.initialized = true;
-      this.logger.info({ state: this.state, lastTradePrice: this.lastTradePrice }, 'Resumed from saved state');
+      this.logger.info({ state: this.state, lastTradePrice: this.lastTradePrice, lastTradeTimestamp: this.lastTradeTimestamp }, 'Resumed from saved state');
     } else {
       this.state = BotState.HOLDING_EUR;
       this.lastTradePrice = 0;
@@ -76,9 +81,12 @@ export class TradingEngine {
     const lastTrade = await this.client.getLastTrade(this.config.tradingPair);
     if (lastTrade) {
       this.lastTradePrice = lastTrade.price;
-      this.logger.info({ lastTradePrice: this.lastTradePrice, side: lastTrade.side }, 'Reference price from last Binance trade');
+      this.lastTradeTimestamp = lastTrade.timestamp;
+      this.logger.info({ lastTradePrice: this.lastTradePrice, side: lastTrade.side, lastTradeTimestamp: this.lastTradeTimestamp }, 'Reference price from last Binance trade');
     } else {
-      this.lastTradePrice = await this.client.getPrice(this.config.tradingPair);
+      const priceData = await this.client.getPrice(this.config.tradingPair);
+      this.lastTradePrice = priceData.last;
+      this.lastTradeTimestamp = new Date().toISOString();
       this.logger.info({ lastTradePrice: this.lastTradePrice }, 'No trade history found, using current market price as reference');
     }
 
@@ -92,7 +100,7 @@ export class TradingEngine {
       this.logger.info({ initialBalanceEur: this.initialBalanceEur }, 'Auto-calculated initial balance for P&L');
     }
 
-    setState(this.db, this.state, this.lastTradePrice, this.btcBalance, this.eurBalance, this.initialBalanceEur);
+    setState(this.db, this.state, this.lastTradePrice, this.btcBalance, this.eurBalance, this.initialBalanceEur, this.lastTradeTimestamp || undefined);
     this.initialized = true;
 
     const targetPrice = this.state === BotState.HOLDING_BTC
@@ -102,24 +110,83 @@ export class TradingEngine {
     this.logger.info({ state: this.state, lastTradePrice: this.lastTradePrice, targetPrice }, 'Bot initialized — waiting for target');
   }
 
-  async onPriceTick(currentPrice: number): Promise<void> {
+  async onPriceTick(priceData: PriceData): Promise<void> {
     if (this.busy) return;
 
-    if (this.state === BotState.HOLDING_BTC) {
-      const targetSellPrice = this.lastTradePrice * (1 + this.config.sellThresholdPct);
-      this.logger.debug({ currentPrice, targetSellPrice }, 'Checking sell condition');
+    const currentPrice = priceData.last;
+    this.lastLow24h = priceData.low24h;
 
-      if (currentPrice >= targetSellPrice) {
-        await this.executeSell();
+    const beyondThreshold = this.isPriceBeyondThreshold(currentPrice);
+
+    if (!beyondThreshold) {
+      if (this.confirmationActive) {
+        this.logger.info({ currentPrice, ticksCollected: this.confirmationPrices.length }, 'Price back inside threshold, resetting confirmation window');
+        this.resetConfirmation();
       }
-    } else if (this.state === BotState.HOLDING_EUR) {
-      const targetBuyPrice = this.lastTradePrice * (1 - this.config.buyThresholdPct);
-      this.logger.debug({ currentPrice, targetBuyPrice }, 'Checking buy condition');
+      return;
+    }
 
-      if (currentPrice <= targetBuyPrice) {
-        await this.executeBuy();
+    // Immediate execution when confirmation is disabled
+    if (this.config.confirmationTicks === 0) {
+      await this.executeTrade();
+      return;
+    }
+
+    // Add tick to confirmation window
+    this.confirmationPrices.push(currentPrice);
+    this.confirmationActive = true;
+    this.logger.debug({ currentPrice, ticksCollected: this.confirmationPrices.length, ticksRequired: this.config.confirmationTicks }, 'Confirmation tick collected');
+
+    if (this.confirmationPrices.length >= this.config.confirmationTicks) {
+      const avgPrice = this.confirmationPrices.reduce((sum, p) => sum + p, 0) / this.confirmationPrices.length;
+      const avgBeyond = this.isPriceBeyondThreshold(avgPrice);
+
+      if (avgBeyond) {
+        this.logger.info({ avgPrice, ticks: this.confirmationPrices.length }, 'Confirmation window complete, average beyond threshold — executing trade');
+        this.resetConfirmation();
+        await this.executeTrade();
+      } else {
+        this.logger.info({ avgPrice, ticks: this.confirmationPrices.length }, 'Confirmation window complete but average NOT beyond threshold — resetting');
+        this.resetConfirmation();
       }
     }
+  }
+
+  private isTradeStale(): boolean {
+    if (!this.lastTradeTimestamp || this.config.staleTradeDays <= 0) return false;
+    const daysSince = (Date.now() - new Date(this.lastTradeTimestamp).getTime()) / (1000 * 60 * 60 * 24);
+    return daysSince > this.config.staleTradeDays;
+  }
+
+  private isPriceBeyondThreshold(price: number): boolean {
+    if (this.state === BotState.HOLDING_BTC) {
+      const targetSellPrice = this.lastTradePrice * (1 + this.config.sellThresholdPct);
+      this.logger.debug({ price, targetSellPrice }, 'Checking sell condition');
+      return price >= targetSellPrice;
+    }
+
+    if (this.isTradeStale() && this.lastLow24h > 0) {
+      const targetBuyPrice = this.lastLow24h * (1 - this.config.buyThresholdPct);
+      this.logger.debug({ price, targetBuyPrice, low24h: this.lastLow24h, mode: 'stale-24h-low' }, 'Checking buy condition (stale → 24h low)');
+      return price <= targetBuyPrice;
+    }
+
+    const targetBuyPrice = this.lastTradePrice * (1 - this.config.buyThresholdPct);
+    this.logger.debug({ price, targetBuyPrice }, 'Checking buy condition');
+    return price <= targetBuyPrice;
+  }
+
+  private async executeTrade(): Promise<void> {
+    if (this.state === BotState.HOLDING_BTC) {
+      await this.executeSell();
+    } else {
+      await this.executeBuy();
+    }
+  }
+
+  private resetConfirmation(): void {
+    this.confirmationPrices = [];
+    this.confirmationActive = false;
   }
 
   getStatus(currentPrice: number): BotStatus {
@@ -134,7 +201,13 @@ export class TradingEngine {
     const targetPrice =
       this.state === BotState.HOLDING_BTC
         ? this.lastTradePrice * (1 + this.config.sellThresholdPct)
-        : this.lastTradePrice * (1 - this.config.buyThresholdPct);
+        : this.isTradeStale() && this.lastLow24h > 0
+          ? this.lastLow24h * (1 - this.config.buyThresholdPct)
+          : this.lastTradePrice * (1 - this.config.buyThresholdPct);
+
+    const avgPrice = this.confirmationPrices.length > 0
+      ? this.confirmationPrices.reduce((sum, p) => sum + p, 0) / this.confirmationPrices.length
+      : 0;
 
     return {
       state: this.state,
@@ -147,6 +220,12 @@ export class TradingEngine {
       pnlPct,
       targetPrice,
       uptimeMs: process.uptime() * 1000,
+      confirmation: {
+        active: this.confirmationActive,
+        ticksCollected: this.confirmationPrices.length,
+        ticksRequired: this.config.confirmationTicks,
+        avgPrice,
+      },
     };
   }
 
@@ -165,10 +244,11 @@ export class TradingEngine {
         this.btcBalance = trade.quantity;
         this.eurBalance = 0;
         this.lastTradePrice = trade.price;
+        this.lastTradeTimestamp = trade.timestamp;
         this.state = BotState.HOLDING_BTC;
 
         insertTrade(this.db, trade);
-        setState(this.db, this.state, this.lastTradePrice, this.btcBalance, this.eurBalance, this.initialBalanceEur);
+        setState(this.db, this.state, this.lastTradePrice, this.btcBalance, this.eurBalance, this.initialBalanceEur, this.lastTradeTimestamp);
 
         this.logger.info({ trade, attempt }, 'BUY executed');
         this.notifySafe(() => this.telegram.sendTradeAlert(trade, this.getPnl(trade.price)));
@@ -198,10 +278,11 @@ export class TradingEngine {
         this.eurBalance = trade.quoteAmount - trade.fee;
         this.btcBalance = 0;
         this.lastTradePrice = trade.price;
+        this.lastTradeTimestamp = trade.timestamp;
         this.state = BotState.HOLDING_EUR;
 
         insertTrade(this.db, trade);
-        setState(this.db, this.state, this.lastTradePrice, this.btcBalance, this.eurBalance, this.initialBalanceEur);
+        setState(this.db, this.state, this.lastTradePrice, this.btcBalance, this.eurBalance, this.initialBalanceEur, this.lastTradeTimestamp);
 
         this.logger.info({ trade, attempt }, 'SELL executed');
         this.notifySafe(() => this.telegram.sendTradeAlert(trade, this.getPnl(trade.price)));
@@ -247,14 +328,27 @@ export class TradingEngine {
         this.state = BotState.HOLDING_EUR;
         this.eurBalance = balances.eur;
         this.btcBalance = 0;
-        setState(this.db, this.state, this.lastTradePrice, this.btcBalance, this.eurBalance, this.initialBalanceEur);
       } else if (saved.state === BotState.HOLDING_EUR && hasBtc && !hasEur) {
         this.logger.warn('State mismatch: DB says HOLDING_EUR but exchange has BTC. Reconciling.');
         this.state = BotState.HOLDING_BTC;
         this.btcBalance = balances.btc;
         this.eurBalance = 0;
-        setState(this.db, this.state, this.lastTradePrice, this.btcBalance, this.eurBalance, this.initialBalanceEur);
+      } else {
+        // State matches — still sync balances from exchange
+        if (this.state === BotState.HOLDING_BTC) {
+          if (Math.abs(this.btcBalance - balances.btc) > 0.00000001) {
+            this.logger.info({ saved: this.btcBalance, exchange: balances.btc }, 'Syncing BTC balance from exchange');
+            this.btcBalance = balances.btc;
+          }
+        } else {
+          if (Math.abs(this.eurBalance - balances.eur) > 0.01) {
+            this.logger.info({ saved: this.eurBalance, exchange: balances.eur }, 'Syncing EUR balance from exchange');
+            this.eurBalance = balances.eur;
+          }
+        }
       }
+
+      setState(this.db, this.state, this.lastTradePrice, this.btcBalance, this.eurBalance, this.initialBalanceEur);
     } catch (err) {
       this.logger.warn({ err }, 'Reconciliation failed, using saved state');
     }

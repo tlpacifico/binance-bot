@@ -97,6 +97,9 @@ journalctl -u binance-bot --no-pager -n 50
 
 Quando fizeres alteracoes no codigo local:
 
+> **IMPORTANTE:** O bot corre em `/home/botuser/binance-bot/` (nao em `/root/binance-bot/`).
+> Copia sempre para `/home/botuser/binance-bot/`.
+
 ### 2.1 Copiar ficheiros atualizados (Windows PowerShell)
 
 ```powershell
@@ -122,19 +125,35 @@ cd /home/botuser/binance-bot
 # Corrigir permissoes (porque scp como root muda o owner)
 chown -R botuser:botuser .
 
-# Recompilar
+# Instalar dependencias (so se mudaste package.json)
 sudo -u botuser npm ci
+
+# Recompilar
 sudo -u botuser npm run build
+
+# Remover dependencias de dev
 sudo -u botuser npm prune --omit=dev
 
 # Reiniciar
 systemctl restart binance-bot
 
-# Verificar
-systemctl status binance-bot
+# Verificar logs (deve dizer "First run" ou "Syncing balance")
+journalctl -u binance-bot --no-pager -n 20
 ```
 
-### 2.3 Atualizar .env
+### 2.3 Reset da base de dados (se os saldos/historico estiverem errados)
+
+```bash
+ssh root@<IP>
+rm /home/botuser/binance-bot/data/bot.db*
+systemctl restart binance-bot
+
+# Confirmar que detectou estado da carteira Binance
+journalctl -u binance-bot --no-pager -n 20
+# Deve mostrar: "First run: detecting state from Binance wallet..."
+```
+
+### 2.4 Atualizar .env
 
 ```bash
 ssh root@<IP>

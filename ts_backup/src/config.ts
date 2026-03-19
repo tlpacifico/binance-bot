@@ -23,6 +23,8 @@ export function loadConfig(): AppConfig {
     telegramChatId: requireEnv('TELEGRAM_CHAT_ID'),
     dashboardPort: parseInt(process.env.DASHBOARD_PORT || '3000', 10),
     dashboardAuthToken: requireEnv('DASHBOARD_AUTH_TOKEN'),
+    confirmationTicks: parseInt(process.env.CONFIRMATION_TICKS || '10', 10),
+    staleTradeDays: parseFloat(process.env.STALE_TRADE_DAYS || '2'),
     logLevel: process.env.LOG_LEVEL || 'info',
   });
 
@@ -41,6 +43,12 @@ export function loadConfig(): AppConfig {
   }
   if (config.dashboardAuthToken.length < 16) {
     throw new Error('DASHBOARD_AUTH_TOKEN must be at least 16 characters');
+  }
+  if (config.confirmationTicks < 0 || config.confirmationTicks > 100) {
+    throw new Error(`CONFIRMATION_TICKS must be between 0 and 100 (got ${config.confirmationTicks})`);
+  }
+  if (config.staleTradeDays < 0) {
+    throw new Error(`STALE_TRADE_DAYS must be >= 0 (got ${config.staleTradeDays})`);
   }
   if (!config.tradingPair.includes('/')) {
     throw new Error(`TRADING_PAIR must be in format BASE/QUOTE (got ${config.tradingPair})`);
