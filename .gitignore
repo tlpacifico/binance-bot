@@ -19,6 +19,7 @@ data/
 appsettings.Development.json
 appsettings.*.json
 !appsettings.json
+!appsettings.Production.json
 
 # TypeScript backup
 ts_backup/node_modules/

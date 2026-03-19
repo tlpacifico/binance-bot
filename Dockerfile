@@ -29,6 +29,7 @@ RUN mkdir -p /app/data /app/logs
 
 COPY --from=build /app/publish .
 
+ENV ASPNETCORE_ENVIRONMENT=Production
 ENV ASPNETCORE_URLS=http://+:3000
 EXPOSE 3000
 

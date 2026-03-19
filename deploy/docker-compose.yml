@@ -11,7 +11,6 @@ services:
     environment:
       - Binance__ApiKey=${BINANCE_API_KEY}
       - Binance__ApiSecret=${BINANCE_API_SECRET}
-      - Binance__UseTestnet=${BINANCE_USE_TESTNET:-false}
       - Telegram__BotToken=${TELEGRAM_BOT_TOKEN}
       - Telegram__ChatId=${TELEGRAM_CHAT_ID}
       - Dashboard__AuthToken=${DASHBOARD_AUTH_TOKEN}
