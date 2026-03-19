@@ -119,7 +119,7 @@ public sealed class PacificStrategy : ITradingStrategy
     private bool IsTradeStale(StrategyContext context)
     {
         if (_settings.StaleTradeDays <= 0) return false;
-        if (context.RecentTrades.Count == 0) return false;
+        if (context.RecentTrades.Count == 0) return true; // No trades = stale, use 24h prices
 
         var lastTradeTime = context.RecentTrades[0].Timestamp;
         var daysSince = (context.Timestamp - lastTradeTime).TotalDays;

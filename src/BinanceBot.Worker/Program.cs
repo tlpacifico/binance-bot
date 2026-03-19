@@ -103,6 +103,7 @@ try
     app.MapGet("/api/status", async (
         IBinanceClient client,
         IStateRepository stateRepo,
+        ITradeRepository tradeRepo,
         StrategyResolver strategyResolver,
         BotControlState controlState,
         HttpContext ctx) =>
@@ -126,9 +127,27 @@ try
         if (strategyResolver.ActiveKey == "pacific" && lastTradePrice > 0)
         {
             var pacificSettings = app.Services.GetRequiredService<IOptions<PacificSettings>>().Value;
-            targetPrice = btcAllocationPct >= 50
-                ? lastTradePrice * (1 + pacificSettings.SellThresholdPct)
-                : lastTradePrice * (1 - pacificSettings.BuyThresholdPct);
+
+            // Match strategy stale logic: no trades or last trade > StaleTradeDays ago
+            var recentTrades = await tradeRepo.GetRecentAsync(1);
+            var isStale = pacificSettings.StaleTradeDays > 0
+                && (recentTrades.Count == 0
+                    || (DateTime.UtcNow - recentTrades[0].Timestamp).TotalDays > pacificSettings.StaleTradeDays);
+
+            if (btcAllocationPct >= 50)
+            {
+                var high24h = isStale ? state?.Last24hHighPrice ?? 0 : 0;
+                targetPrice = isStale && high24h > 0
+                    ? high24h * (1 + pacificSettings.SellThresholdPct)
+                    : lastTradePrice * (1 + pacificSettings.SellThresholdPct);
+            }
+            else
+            {
+                var low24h = isStale ? state?.Last24hLowPrice ?? 0 : 0;
+                targetPrice = isStale && low24h > 0
+                    ? low24h * (1 - pacificSettings.BuyThresholdPct)
+                    : lastTradePrice * (1 - pacificSettings.BuyThresholdPct);
+            }
         }
 
         return Results.Ok(new
