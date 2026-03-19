@@ -8,7 +8,9 @@ using BinanceBot.Infrastructure.Telegram.Commands;
 using BinanceBot.Strategies.DcaRebalancing;
 using BinanceBot.Strategies.Pacific;
 using BinanceBot.Worker.Services;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Serilog;
 
 Log.Logger = new LoggerConfiguration()
@@ -77,6 +79,9 @@ try
     builder.Services.AddHostedService<TradingEngineService>();
     builder.Services.AddHostedService<TelegramCommandService>();
 
+    builder.Services.ConfigureHttpJsonOptions(opts =>
+        opts.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
     var app = builder.Build();
 
     // Ensure DB is created
@@ -115,19 +120,31 @@ try
         var initialBalance = state?.InitialBalanceEur ?? 0;
         var pnl = totalValue - initialBalance;
         var pnlPct = initialBalance > 0 ? pnl / initialBalance * 100 : 0;
+        var btcAllocationPct = totalValue > 0 ? (balances.Btc * price.Last) / totalValue * 100 : 0;
+
+        decimal? targetPrice = null;
+        var lastTradePrice = state?.LastTradePrice ?? 0;
+        if (strategyResolver.ActiveKey == "pacific" && lastTradePrice > 0)
+        {
+            var pacificSettings = app.Services.GetRequiredService<IOptions<PacificSettings>>().Value;
+            targetPrice = btcAllocationPct >= 50
+                ? lastTradePrice * (1 + pacificSettings.SellThresholdPct)
+                : lastTradePrice * (1 - pacificSettings.BuyThresholdPct);
+        }
 
         return Results.Ok(new
         {
             state = controlState.IsRunning ? "RUNNING" : "PAUSED",
             strategy = strategyResolver.ActiveKey,
-            lastTradePrice = state?.LastTradePrice ?? 0,
+            lastTradePrice,
             btcBalance = balances.Btc,
             eurBalance = balances.Eur,
             initialBalanceEur = initialBalance,
             currentBtcPrice = price.Last,
             pnlEur = pnl,
             pnlPct,
-            btcAllocationPct = totalValue > 0 ? (balances.Btc * price.Last) / totalValue * 100 : 0,
+            btcAllocationPct,
+            targetPrice,
             uptimeMs = Environment.TickCount64
         });
     });

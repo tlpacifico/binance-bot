@@ -120,14 +120,14 @@
 
         // Status
         const stateEl = document.getElementById('state');
-        if (status.state === 'HOLDING_BTC') {
+        if (status.btcAllocationPct >= 50) {
           stateEl.innerHTML = '<span class="badge btc">HOLDING BTC</span>';
         } else {
           stateEl.innerHTML = '<span class="badge eur">HOLDING EUR</span>';
         }
 
         document.getElementById('price').textContent = '€' + fmt(status.currentBtcPrice, 2);
-        document.getElementById('target').textContent = '€' + fmt(status.targetPrice, 2);
+        document.getElementById('target').textContent = status.targetPrice != null ? '€' + fmt(status.targetPrice, 2) : '—';
 
         const pnlEl = document.getElementById('pnl');
         pnlEl.textContent = '€' + fmt(status.pnlEur, 2) + ' (' + fmt(status.pnlPct, 2) + '%)';
@@ -138,7 +138,7 @@
         document.getElementById('eurBalance').textContent = '€' + fmt(status.eurBalance, 2);
         document.getElementById('initialBalance').textContent = '€' + fmt(status.initialBalanceEur, 2);
 
-        const currentValue = status.state === 'HOLDING_BTC'
+        const currentValue = status.btcAllocationPct >= 50
           ? status.btcBalance * status.currentBtcPrice
           : status.eurBalance;
         document.getElementById('currentValue').textContent = '€' + fmt(currentValue, 2);
@@ -149,12 +149,13 @@
         // Trades
         const tbody = document.getElementById('trades');
         tbody.innerHTML = trades.map(function(t) {
+          var side = (t.side || '').toUpperCase();
           return '<tr>'
             + '<td>' + formatTime(t.timestamp) + '</td>'
-            + '<td class="' + (t.side === 'BUY' ? 'buy' : 'sell') + '">' + t.side + '</td>'
+            + '<td class="' + (side === 'BUY' ? 'buy' : 'sell') + '">' + side + '</td>'
             + '<td>€' + fmt(t.price, 2) + '</td>'
-            + '<td>' + fmt(t.quantity, 8) + '</td>'
-            + '<td>€' + fmt(t.quoteAmount, 2) + '</td>'
+            + '<td>' + fmt(t.quantityBtc, 8) + '</td>'
+            + '<td>€' + fmt(t.quoteAmountEur, 2) + '</td>'
             + '</tr>';
         }).join('');
 
