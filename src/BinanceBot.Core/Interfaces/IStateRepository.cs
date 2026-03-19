@@ -12,6 +12,9 @@ public sealed record BotStateData
     public DateTime? LastRebalanceTimestamp { get; init; }
     public BotRunState RunState { get; init; } = BotRunState.Running;
     public string? StrategyStateJson { get; init; }
+    public decimal Last24hLowPrice { get; init; }
+    public decimal Last24hHighPrice { get; init; }
+    public DateTime? Last24hPriceTimestamp { get; init; }
 }
 
 public interface IStateRepository

@@ -1,4 +1,21 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: binance-bot-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=binancebot
+      - POSTGRES_USER=bot
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bot -d binancebot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   binance-bot:
     image: ghcr.io/tlpacifico/binance-bot:latest
     container_name: binance-bot
@@ -6,9 +23,12 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - bot-data:/app/data
       - bot-logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
+      - ConnectionStrings__DefaultConnection=${CONNECTION_STRING}
       - Binance__ApiKey=${BINANCE_API_KEY}
       - Binance__ApiSecret=${BINANCE_API_SECRET}
       - Telegram__BotToken=${TELEGRAM_BOT_TOKEN}
@@ -23,5 +43,5 @@ services:
       start_period: 10s
 
 volumes:
-  bot-data:
+  pgdata:
   bot-logs:

@@ -29,12 +29,15 @@ public sealed class PacificStrategy : ITradingStrategy
         var lastTradePrice = GetLastTradePrice(context);
         var isStale = IsTradeStale(context);
 
+        var low24h = context.Last24hLowPrice ?? context.CurrentPrice.Low24H;
+        var high24h = context.Last24hHighPrice ?? context.CurrentPrice.High24H;
+
         var decision = PacificCalculator.Evaluate(
             price,
             context.Portfolio,
             lastTradePrice,
-            context.CurrentPrice.Low24H,
-            context.CurrentPrice.High24H,
+            low24h,
+            high24h,
             _settings.SellThresholdPct,
             _settings.BuyThresholdPct,
             isStale,
@@ -81,8 +84,8 @@ public sealed class PacificStrategy : ITradingStrategy
                 avgPrice,
                 context.Portfolio,
                 lastTradePrice,
-                context.CurrentPrice.Low24H,
-                context.CurrentPrice.High24H,
+                low24h,
+                high24h,
                 _settings.SellThresholdPct,
                 _settings.BuyThresholdPct,
                 isStale,
@@ -106,6 +109,8 @@ public sealed class PacificStrategy : ITradingStrategy
 
     private decimal GetLastTradePrice(StrategyContext context)
     {
+        if (context.LastTradePrice is > 0)
+            return context.LastTradePrice.Value;
         if (context.RecentTrades.Count > 0)
             return context.RecentTrades[0].Price;
         return context.CurrentPrice.Last;

@@ -35,10 +35,9 @@ try
     builder.Services.Configure<PacificSettings>(builder.Configuration.GetSection(PacificSettings.Section));
 
     // Persistence
-    var dbPath = Path.Combine("data", "bot.db");
-    Directory.CreateDirectory("data");
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
     builder.Services.AddDbContext<BotDbContext>(options =>
-        options.UseSqlite($"Data Source={dbPath}"));
+        options.UseNpgsql(connectionString));
     builder.Services.AddScoped<ITradeRepository, TradeRepository>();
     builder.Services.AddScoped<IStateRepository, StateRepository>();
 
@@ -84,11 +83,11 @@ try
 
     var app = builder.Build();
 
-    // Ensure DB is created
+    // Apply pending migrations
     using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        db.Database.EnsureCreated();
+        db.Database.Migrate();
     }
 
     // Dashboard: static files

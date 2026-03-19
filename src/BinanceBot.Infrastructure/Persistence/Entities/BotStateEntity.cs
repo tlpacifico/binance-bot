@@ -14,4 +14,7 @@ public class BotStateEntity
     public DateTime? LastRebalanceTimestamp { get; set; }
     public string RunState { get; set; } = "Running";
     public string? StrategyStateJson { get; set; }
+    public decimal Last24hLowPrice { get; set; }
+    public decimal Last24hHighPrice { get; set; }
+    public DateTime? Last24hPriceTimestamp { get; set; }
 }

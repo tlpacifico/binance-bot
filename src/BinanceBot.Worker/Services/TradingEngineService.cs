@@ -97,7 +97,10 @@ public sealed class TradingEngineService : IHostedService
                 EurBalance = balances.Eur,
                 InitialBalanceEur = initialBalance,
                 LastTradePrice = price.Last,
-                RunState = BotRunState.Running
+                RunState = BotRunState.Running,
+                Last24hLowPrice = price.Low24H,
+                Last24hHighPrice = price.High24H,
+                Last24hPriceTimestamp = DateTime.UtcNow
             }, ct);
 
             _logger.LogInformation("First run initialized: BTC={Btc}, EUR={Eur}", balances.Btc, balances.Eur);
@@ -143,6 +146,27 @@ public sealed class TradingEngineService : IHostedService
             var state = await stateRepo.GetAsync(ct);
             var balances = await _client.GetBalancesAsync(ct);
 
+            // Update 24h prices if expired (> 24h) or not yet set
+            var now = DateTime.UtcNow;
+            decimal low24h, high24h;
+            if (state?.Last24hPriceTimestamp is null || now > state.Last24hPriceTimestamp.Value.AddHours(24))
+            {
+                low24h = price.Low24H;
+                high24h = price.High24H;
+                state = (state ?? new BotStateData()) with
+                {
+                    Last24hLowPrice = low24h,
+                    Last24hHighPrice = high24h,
+                    Last24hPriceTimestamp = now
+                };
+                await stateRepo.SaveAsync(state, ct);
+            }
+            else
+            {
+                low24h = state.Last24hLowPrice;
+                high24h = state.Last24hHighPrice;
+            }
+
             var portfolio = new Portfolio
             {
                 BtcBalance = balances.Btc,
@@ -159,7 +183,10 @@ public sealed class TradingEngineService : IHostedService
                 Portfolio = portfolio,
                 RecentTrades = recentTrades,
                 Timestamp = DateTime.UtcNow,
-                LastRebalanceTimestamp = state?.LastRebalanceTimestamp
+                LastRebalanceTimestamp = state?.LastRebalanceTimestamp,
+                LastTradePrice = state?.LastTradePrice,
+                Last24hLowPrice = low24h,
+                Last24hHighPrice = high24h
             };
 
             var strategy = _strategyResolver.CurrentStrategy;

@@ -121,7 +121,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: BINANCE_API_KEY,BINANCE_API_SECRET,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,DASHBOARD_AUTH_TOKEN
+          envs: BINANCE_API_KEY,BINANCE_API_SECRET,TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,DASHBOARD_AUTH_TOKEN,POSTGRES_PASSWORD,CONNECTION_STRING
           script: |
             cd /opt/binance-bot
 
@@ -132,12 +132,14 @@ jobs:
               "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" \
               "TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}" \
               "DASHBOARD_AUTH_TOKEN=${DASHBOARD_AUTH_TOKEN}" \
+              "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" \
+              "CONNECTION_STRING=${CONNECTION_STRING}" \
               > .env
 
             # Pull nova imagem (package publico, sem login)
             docker compose pull
 
-            # Reiniciar container
+            # Reiniciar containers (inclui postgres)
             docker compose up -d --remove-orphans
 
             # Remover imagens antigas
@@ -150,6 +152,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DASHBOARD_AUTH_TOKEN: ${{ secrets.DASHBOARD_AUTH_TOKEN }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          CONNECTION_STRING: ${{ secrets.CONNECTION_STRING }}
 
       - name: Verificar health
         uses: appleboy/ssh-action@v1

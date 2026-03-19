@@ -25,7 +25,10 @@ public sealed class StateRepository : IStateRepository
             LastTradePrice = entity.LastTradePrice,
             LastRebalanceTimestamp = entity.LastRebalanceTimestamp,
             RunState = Enum.Parse<BotRunState>(entity.RunState),
-            StrategyStateJson = entity.StrategyStateJson
+            StrategyStateJson = entity.StrategyStateJson,
+            Last24hLowPrice = entity.Last24hLowPrice,
+            Last24hHighPrice = entity.Last24hHighPrice,
+            Last24hPriceTimestamp = entity.Last24hPriceTimestamp
         };
     }
 
@@ -46,6 +49,9 @@ public sealed class StateRepository : IStateRepository
         entity.LastRebalanceTimestamp = state.LastRebalanceTimestamp;
         entity.RunState = state.RunState.ToString();
         entity.StrategyStateJson = state.StrategyStateJson;
+        entity.Last24hLowPrice = state.Last24hLowPrice;
+        entity.Last24hHighPrice = state.Last24hHighPrice;
+        entity.Last24hPriceTimestamp = state.Last24hPriceTimestamp;
 
         await _db.SaveChangesAsync(ct);
     }
