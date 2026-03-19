@@ -1,6 +1,8 @@
 name: Deploy Binance Bot
 
 on:
+  push:
+    branches: [master]
   workflow_dispatch:
     inputs:
       skip_tests:
