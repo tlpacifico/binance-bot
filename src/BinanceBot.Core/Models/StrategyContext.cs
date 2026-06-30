@@ -8,6 +8,8 @@ public sealed record StrategyContext
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
     public DateTime? LastRebalanceTimestamp { get; init; }
     public decimal? LastTradePrice { get; init; }
-    public decimal? Last24hLowPrice { get; init; }
-    public decimal? Last24hHighPrice { get; init; }
+    public decimal? Last24hLowPrice { get; init; }  // deprecated — removed in Task 5
+    public decimal? Last24hHighPrice { get; init; } // deprecated — removed in Task 5
+    public decimal? LowSinceTrade { get; init; }
+    public decimal? HighSinceTrade { get; init; }
 }
