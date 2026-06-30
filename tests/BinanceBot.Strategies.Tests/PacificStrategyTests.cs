@@ -99,29 +99,6 @@ public class PacificStrategyTests
     }
 
     [Fact]
-    public async Task WithConfirmation_AvgNotBeyondThreshold_ShouldResetAndHold()
-    {
-        var strategy = CreateStrategy(confirmationTicks: 3);
-
-        // 2 ticks barely above threshold, 1 tick far above — but average might still pass
-        // Let's use prices that pass individually but average doesn't:
-        // threshold = 60000*1.025 = 61500
-        // Prices: 61500, 61500, 61501 → avg = 61500.33 → still passes
-        // Instead: 61500, 61501, 61499 → avg = 61500 → borderline passes
-
-        // For avg NOT beyond, we need prices that individually cross but average doesn't
-        // This is hard with this logic, so let's just verify the path works
-        // by testing a scenario where confirmation completes normally
-        for (int i = 0; i < 3; i++)
-        {
-            var ctx = CreateSellContext(currentPrice: 61_600m, lastTradePrice: 60_000m);
-            await strategy.EvaluateAsync(ctx, CancellationToken.None);
-        }
-        // After 3 ticks with avg > target, it would have executed
-        // The confirmation should be reset after execution
-    }
-
-    [Fact]
     public async Task LastTradePrice_DerivedFromRecentTrades()
     {
         var strategy = CreateStrategy(confirmationTicks: 0);

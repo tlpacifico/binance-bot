@@ -103,7 +103,6 @@ try
     app.MapGet("/api/status", async (
         IBinanceClient client,
         IStateRepository stateRepo,
-        ITradeRepository tradeRepo,
         StrategyResolver strategyResolver,
         BotControlState controlState,
         HttpContext ctx) =>
