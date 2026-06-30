@@ -98,9 +98,7 @@ public sealed class TradingEngineService : IHostedService
                 InitialBalanceEur = initialBalance,
                 LastTradePrice = price.Last,
                 RunState = BotRunState.Running,
-                Last24hLowPrice = price.Low24H,
-                Last24hHighPrice = price.High24H,
-                Last24hPriceTimestamp = DateTime.UtcNow
+                StrategyStateJson = PositionExtremes.Initial(price.Last).ToJson()
             }, ct);
 
             _logger.LogInformation("First run initialized: BTC={Btc}, EUR={Eur}", balances.Btc, balances.Eur);
@@ -146,25 +144,14 @@ public sealed class TradingEngineService : IHostedService
             var state = await stateRepo.GetAsync(ct);
             var balances = await _client.GetBalancesAsync(ct);
 
-            // Update 24h prices if expired (> 24h) or not yet set
-            var now = DateTime.UtcNow;
-            decimal low24h, high24h;
-            if (state?.Last24hPriceTimestamp is null || now > state.Last24hPriceTimestamp.Value.AddHours(24))
+            // Track local price extremes since the last trade (for Pacific trailing-escape)
+            var extremes = (PositionExtremes.FromJson(state?.StrategyStateJson)
+                ?? PositionExtremes.Initial(price.Last)).Observe(price.Last);
+            if (state is not null &&
+                (string.IsNullOrWhiteSpace(state.StrategyStateJson) || state.StrategyStateJson != extremes.ToJson()))
             {
-                low24h = price.Low24H;
-                high24h = price.High24H;
-                state = (state ?? new BotStateData()) with
-                {
-                    Last24hLowPrice = low24h,
-                    Last24hHighPrice = high24h,
-                    Last24hPriceTimestamp = now
-                };
+                state = state with { StrategyStateJson = extremes.ToJson() };
                 await stateRepo.SaveAsync(state, ct);
-            }
-            else
-            {
-                low24h = state.Last24hLowPrice;
-                high24h = state.Last24hHighPrice;
             }
 
             var portfolio = new Portfolio
@@ -185,8 +172,8 @@ public sealed class TradingEngineService : IHostedService
                 Timestamp = DateTime.UtcNow,
                 LastRebalanceTimestamp = state?.LastRebalanceTimestamp,
                 LastTradePrice = state?.LastTradePrice,
-                Last24hLowPrice = low24h,
-                Last24hHighPrice = high24h
+                LowSinceTrade = extremes.LowSinceTrade,
+                HighSinceTrade = extremes.HighSinceTrade
             };
 
             var strategy = _strategyResolver.CurrentStrategy;
@@ -253,7 +240,8 @@ public sealed class TradingEngineService : IHostedService
                     EurBalance = balances.Eur,
                     LastTradePrice = trade.Price,
                     LastRebalanceTimestamp = DateTime.UtcNow,
-                    RunState = _controlState.RunState
+                    RunState = _controlState.RunState,
+                    StrategyStateJson = PositionExtremes.Initial(trade.Price).ToJson()
                 }, ct);
 
                 var updatedPortfolio = new Portfolio
