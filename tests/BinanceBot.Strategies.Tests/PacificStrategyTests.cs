@@ -9,16 +9,18 @@ namespace BinanceBot.Strategies.Tests;
 
 public class PacificStrategyTests
 {
-    private PacificStrategy CreateStrategy(int confirmationTicks = 0, int staleTradeDays = 2)
+    private PacificStrategy CreateStrategy(int confirmationTicks = 0)
     {
         var settings = Options.Create(new PacificSettings
         {
             SellThresholdPct = 0.025m,
             BuyThresholdPct = 0.025m,
             ConfirmationTicks = confirmationTicks,
-            StaleTradeDays = staleTradeDays,
             CheckIntervalSeconds = 30,
-            MinTradeEur = 10m
+            MinTradeEur = 10m,
+            EscapeDrawdownPct = 0.05m,
+            EscapeRecoveryPct = 0.025m,
+            HardStopLossPct = 0m
         });
         return new PacificStrategy(settings, NullLogger<PacificStrategy>.Instance);
     }
@@ -29,7 +31,7 @@ public class PacificStrategyTests
         var strategy = CreateStrategy();
         strategy.Name.Should().Be("pacific");
         strategy.EvaluationInterval.Should().Be(TimeSpan.FromSeconds(30));
-        strategy.Description.Should().Contain("deadlock fixed");
+        strategy.Description.Should().Contain("trailing-escape");
     }
 
     [Fact]

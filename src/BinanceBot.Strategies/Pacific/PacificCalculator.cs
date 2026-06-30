@@ -8,11 +8,13 @@ public static class PacificCalculator
         decimal currentPrice,
         Portfolio portfolio,
         decimal lastTradePrice,
-        decimal low24H,
-        decimal high24H,
+        decimal lowSinceTrade,
+        decimal highSinceTrade,
         decimal sellThresholdPct,
         decimal buyThresholdPct,
-        bool isStale,
+        decimal escapeDrawdownPct,
+        decimal escapeRecoveryPct,
+        decimal hardStopLossPct,
         decimal minTradeEur)
     {
         if (portfolio.TotalValueEur <= 0)
@@ -21,78 +23,85 @@ public static class PacificCalculator
         var btcValueEur = portfolio.BtcBalance * currentPrice;
         var holdingBtc = btcValueEur > portfolio.EurBalance;
 
-        if (holdingBtc)
-            return EvaluateSell(currentPrice, portfolio, lastTradePrice, high24H, sellThresholdPct, isStale, minTradeEur);
-
-        return EvaluateBuy(currentPrice, portfolio, lastTradePrice, low24H, buyThresholdPct, isStale, minTradeEur);
+        return holdingBtc
+            ? EvaluateSell(currentPrice, portfolio, lastTradePrice, lowSinceTrade,
+                sellThresholdPct, escapeDrawdownPct, escapeRecoveryPct, hardStopLossPct, minTradeEur)
+            : EvaluateBuy(currentPrice, portfolio, lastTradePrice, highSinceTrade,
+                buyThresholdPct, escapeDrawdownPct, escapeRecoveryPct, minTradeEur);
     }
 
     private static TradeDecision EvaluateSell(
         decimal currentPrice,
         Portfolio portfolio,
         decimal lastTradePrice,
-        decimal high24H,
+        decimal lowSinceTrade,
         decimal sellThresholdPct,
-        bool isStale,
+        decimal escapeDrawdownPct,
+        decimal escapeRecoveryPct,
+        decimal hardStopLossPct,
         decimal minTradeEur)
     {
-        decimal targetSellPrice;
-        string mode;
-
-        if (isStale && high24H > 0)
-        {
-            targetSellPrice = high24H * (1 + sellThresholdPct);
-            mode = "stale-24h-high";
-        }
-        else
-        {
-            targetSellPrice = lastTradePrice * (1 + sellThresholdPct);
-            mode = "normal";
-        }
-
-        if (currentPrice < targetSellPrice)
-            return TradeDecision.Hold($"Price €{currentPrice:N2} below sell target €{targetSellPrice:N2} ({mode})");
-
         var sellValueEur = portfolio.BtcBalance * currentPrice;
-        if (sellValueEur < minTradeEur)
-            return TradeDecision.Hold($"Sell value €{sellValueEur:N2} below minimum €{minTradeEur:N2}");
 
-        return TradeDecision.Sell(
-            portfolio.BtcBalance,
-            $"Sell all BTC: price €{currentPrice:N2} >= target €{targetSellPrice:N2} ({mode})");
+        TradeDecision SellAll(string reason) =>
+            sellValueEur < minTradeEur
+                ? TradeDecision.Hold($"Sell value €{sellValueEur:N2} below minimum €{minTradeEur:N2}")
+                : TradeDecision.Sell(portfolio.BtcBalance, reason);
+
+        // 1. Profit target (preferred)
+        var profitTarget = lastTradePrice * (1 + sellThresholdPct);
+        if (currentPrice >= profitTarget)
+            return SellAll($"Sell all BTC: price €{currentPrice:N2} >= profit target €{profitTarget:N2} (normal)");
+
+        var drawdown = lastTradePrice > 0 ? (lastTradePrice - currentPrice) / lastTradePrice : 0m;
+
+        // 2. Hard stop-loss (if enabled)
+        if (hardStopLossPct > 0 && drawdown >= hardStopLossPct)
+            return SellAll($"Sell all BTC: drawdown {drawdown:P1} >= hard stop {hardStopLossPct:P1} (hard-stop)");
+
+        // 3. Trailing escape
+        if (drawdown >= escapeDrawdownPct)
+        {
+            var escapeTarget = lowSinceTrade * (1 + escapeRecoveryPct);
+            return currentPrice >= escapeTarget
+                ? SellAll($"Sell all BTC: price €{currentPrice:N2} >= escape target €{escapeTarget:N2} (trailing-escape)")
+                : TradeDecision.Hold($"Escape armed: price €{currentPrice:N2} below escape target €{escapeTarget:N2} (trailing-escape)");
+        }
+
+        return TradeDecision.Hold($"Price €{currentPrice:N2} below profit target €{profitTarget:N2} (normal)");
     }
 
     private static TradeDecision EvaluateBuy(
         decimal currentPrice,
         Portfolio portfolio,
         decimal lastTradePrice,
-        decimal low24H,
+        decimal highSinceTrade,
         decimal buyThresholdPct,
-        bool isStale,
+        decimal escapeDrawdownPct,
+        decimal escapeRecoveryPct,
         decimal minTradeEur)
     {
-        decimal targetBuyPrice;
-        string mode;
+        TradeDecision BuyAll(string reason) =>
+            portfolio.EurBalance < minTradeEur
+                ? TradeDecision.Hold($"EUR balance €{portfolio.EurBalance:N2} below minimum €{minTradeEur:N2}")
+                : TradeDecision.Buy(portfolio.EurBalance, reason);
 
-        if (isStale && low24H > 0)
+        // 1. Profit target (preferred)
+        var profitTarget = lastTradePrice * (1 - buyThresholdPct);
+        if (currentPrice <= profitTarget)
+            return BuyAll($"Buy all EUR: price €{currentPrice:N2} <= profit target €{profitTarget:N2} (normal)");
+
+        var runup = lastTradePrice > 0 ? (currentPrice - lastTradePrice) / lastTradePrice : 0m;
+
+        // 2. Trailing escape (no hard stop on EUR side — run-up is opportunity cost, not loss)
+        if (runup >= escapeDrawdownPct)
         {
-            targetBuyPrice = low24H * (1 - buyThresholdPct);
-            mode = "stale-24h-low";
-        }
-        else
-        {
-            targetBuyPrice = lastTradePrice * (1 - buyThresholdPct);
-            mode = "normal";
+            var escapeTarget = highSinceTrade * (1 - escapeRecoveryPct);
+            return currentPrice <= escapeTarget
+                ? BuyAll($"Buy all EUR: price €{currentPrice:N2} <= escape target €{escapeTarget:N2} (trailing-escape)")
+                : TradeDecision.Hold($"Escape armed: price €{currentPrice:N2} above escape target €{escapeTarget:N2} (trailing-escape)");
         }
 
-        if (currentPrice > targetBuyPrice)
-            return TradeDecision.Hold($"Price €{currentPrice:N2} above buy target €{targetBuyPrice:N2} ({mode})");
-
-        if (portfolio.EurBalance < minTradeEur)
-            return TradeDecision.Hold($"EUR balance €{portfolio.EurBalance:N2} below minimum €{minTradeEur:N2}");
-
-        return TradeDecision.Buy(
-            portfolio.EurBalance,
-            $"Buy all EUR: price €{currentPrice:N2} <= target €{targetBuyPrice:N2} ({mode})");
+        return TradeDecision.Hold($"Price €{currentPrice:N2} above profit target €{profitTarget:N2} (normal)");
     }
 }

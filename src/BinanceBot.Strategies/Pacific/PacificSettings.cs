@@ -7,7 +7,6 @@ public sealed class PacificSettings
     public decimal SellThresholdPct { get; set; } = 0.025m;
     public decimal BuyThresholdPct { get; set; } = 0.025m;
     public int ConfirmationTicks { get; set; } = 10;
-    public int StaleTradeDays { get; set; } = 2; // deprecated — removed in Task 2
     public int CheckIntervalSeconds { get; set; } = 30;
     public decimal MinTradeEur { get; set; } = 10m;
 
