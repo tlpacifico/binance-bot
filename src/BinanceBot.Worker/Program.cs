@@ -127,10 +127,19 @@ try
         if (strategyResolver.ActiveKey == "pacific" && lastTradePrice > 0)
         {
             var pacificSettings = app.Services.GetRequiredService<IOptions<PacificSettings>>().Value;
+            var extremes = PositionExtremes.FromJson(state?.StrategyStateJson)
+                ?? PositionExtremes.Initial(price.Last);
 
-            targetPrice = btcAllocationPct >= 50
-                ? lastTradePrice * (1 + pacificSettings.SellThresholdPct)
-                : lastTradePrice * (1 - pacificSettings.BuyThresholdPct);
+            targetPrice = PacificTargetPrice.Compute(
+                holdingBtc: btcAllocationPct >= 50,
+                lastTradePrice: lastTradePrice,
+                currentPrice: price.Last,
+                lowSinceTrade: extremes.LowSinceTrade,
+                highSinceTrade: extremes.HighSinceTrade,
+                sellThresholdPct: pacificSettings.SellThresholdPct,
+                buyThresholdPct: pacificSettings.BuyThresholdPct,
+                escapeDrawdownPct: pacificSettings.EscapeDrawdownPct,
+                escapeRecoveryPct: pacificSettings.EscapeRecoveryPct);
         }
 
         return Results.Ok(new
