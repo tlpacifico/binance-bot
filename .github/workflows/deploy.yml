@@ -160,8 +160,16 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            sleep 10
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' binance-bot 2>/dev/null || echo "running")
-            echo "Container status: $STATUS"
-            curl -sf http://localhost:3000/api/health || echo "WARNING: health check falhou"
-            docker compose -f /opt/binance-bot/docker-compose.yml ps
+            # Poll health for up to 60s; FAIL the deploy if it never comes up.
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:3000/api/health >/dev/null 2>&1; then
+                echo "Health OK after $((i * 2))s"
+                docker compose -f /opt/binance-bot/docker-compose.yml ps
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "ERROR: health check failed after 60s — deploy is unhealthy"
+            docker logs binance-bot --tail 50 2>&1 || true
+            docker compose -f /opt/binance-bot/docker-compose.yml ps || true
+            exit 1
