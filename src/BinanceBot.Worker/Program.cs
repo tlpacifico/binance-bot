@@ -7,6 +7,7 @@ using BinanceBot.Infrastructure.Telegram;
 using BinanceBot.Infrastructure.Telegram.Commands;
 using BinanceBot.Strategies.DcaRebalancing;
 using BinanceBot.Strategies.Pacific;
+using BinanceBot.Worker;
 using BinanceBot.Worker.Services;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -83,11 +84,18 @@ try
 
     var app = builder.Build();
 
-    // Apply pending migrations
+    // Apply pending migrations, retrying while the database is still coming up
+    // (a transient DB blip at boot must not crash-loop the host and kill the dashboard).
     using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<BotDbContext>();
-        db.Database.Migrate();
+        StartupRetry.Run(
+            () => db.Database.Migrate(),
+            maxAttempts: 10,
+            backoff: attempt => TimeSpan.FromSeconds(Math.Min(30, attempt * 3)),
+            onRetry: (ex, attempt, delay) => Log.Warning(ex,
+                "Database not ready (attempt {Attempt}/10), retrying in {Delay}s",
+                attempt, delay.TotalSeconds));
     }
 
     // Dashboard: static files
