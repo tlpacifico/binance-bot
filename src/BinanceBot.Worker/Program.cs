@@ -130,6 +130,7 @@ try
         var btcAllocationPct = totalValue > 0 ? (balances.Btc * price.Last) / totalValue * 100 : 0;
 
         decimal? targetPrice = null;
+        object? pacific = null;
         var lastTradePrice = state?.LastTradePrice ?? 0;
         if (strategyResolver.ActiveKey == "pacific" && lastTradePrice > 0)
         {
@@ -137,7 +138,7 @@ try
             var extremes = PositionExtremes.FromJson(state?.StrategyStateJson)
                 ?? PositionExtremes.Initial(price.Last);
 
-            targetPrice = PacificView.Compute(
+            var view = PacificView.Compute(
                 holdingBtc: (balances.Btc * price.Last) > balances.Eur,
                 lastTradePrice: lastTradePrice,
                 currentPrice: price.Last,
@@ -147,7 +148,30 @@ try
                 buyThresholdPct: pacificSettings.BuyThresholdPct,
                 escapeDrawdownPct: pacificSettings.EscapeDrawdownPct,
                 escapeRecoveryPct: pacificSettings.EscapeRecoveryPct,
-                hardStopLossPct: pacificSettings.HardStopLossPct)?.ActiveTarget;
+                hardStopLossPct: pacificSettings.HardStopLossPct);
+
+            if (view is not null)
+            {
+                targetPrice = view.ActiveTarget;
+                pacific = new
+                {
+                    mode = view.Mode,
+                    holdingBtc = view.HoldingBtc,
+                    lastTradePrice = view.LastTradePrice,
+                    profitTarget = view.ProfitTarget,
+                    escapeArmPrice = view.EscapeArmPrice,
+                    escapeTarget = view.EscapeTarget,
+                    activeTarget = view.ActiveTarget,
+                    lowSinceTrade = view.LowSinceTrade,
+                    highSinceTrade = view.HighSinceTrade,
+                    moveFromLastTradePct = view.MoveFromLastTradePct,
+                    sellThresholdPct = pacificSettings.SellThresholdPct,
+                    buyThresholdPct = pacificSettings.BuyThresholdPct,
+                    escapeDrawdownPct = pacificSettings.EscapeDrawdownPct,
+                    escapeRecoveryPct = pacificSettings.EscapeRecoveryPct,
+                    hardStopLossPct = pacificSettings.HardStopLossPct,
+                };
+            }
         }
 
         return Results.Ok(new
@@ -163,6 +187,7 @@ try
             pnlPct,
             btcAllocationPct,
             targetPrice,
+            pacific,
             uptimeMs = Environment.TickCount64
         });
     });
