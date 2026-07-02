@@ -77,7 +77,8 @@ public sealed class BinanceClientAdapter : IBinanceClient, IDisposable
 
         return new TradeRecord
         {
-            Timestamp = data.CreateTime,
+            // Binance's place-order ack often omits CreateTime; a market order fills now, so fall back to UtcNow.
+            Timestamp = data.CreateTime == default ? DateTime.UtcNow : data.CreateTime,
             Side = TradeSide.Buy,
             Price = avgPrice,
             QuantityBtc = data.QuantityFilled,
@@ -110,7 +111,8 @@ public sealed class BinanceClientAdapter : IBinanceClient, IDisposable
 
         return new TradeRecord
         {
-            Timestamp = data.CreateTime,
+            // Binance's place-order ack often omits CreateTime; a market order fills now, so fall back to UtcNow.
+            Timestamp = data.CreateTime == default ? DateTime.UtcNow : data.CreateTime,
             Side = TradeSide.Sell,
             Price = avgPrice,
             QuantityBtc = data.QuantityFilled,
