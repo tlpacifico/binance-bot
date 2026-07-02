@@ -137,8 +137,8 @@ try
             var extremes = PositionExtremes.FromJson(state?.StrategyStateJson)
                 ?? PositionExtremes.Initial(price.Last);
 
-            targetPrice = PacificTargetPrice.Compute(
-                holdingBtc: btcAllocationPct >= 50,
+            targetPrice = PacificView.Compute(
+                holdingBtc: (balances.Btc * price.Last) > balances.Eur,
                 lastTradePrice: lastTradePrice,
                 currentPrice: price.Last,
                 lowSinceTrade: extremes.LowSinceTrade,
@@ -146,7 +146,8 @@ try
                 sellThresholdPct: pacificSettings.SellThresholdPct,
                 buyThresholdPct: pacificSettings.BuyThresholdPct,
                 escapeDrawdownPct: pacificSettings.EscapeDrawdownPct,
-                escapeRecoveryPct: pacificSettings.EscapeRecoveryPct);
+                escapeRecoveryPct: pacificSettings.EscapeRecoveryPct,
+                hardStopLossPct: pacificSettings.HardStopLossPct)?.ActiveTarget;
         }
 
         return Results.Ok(new
