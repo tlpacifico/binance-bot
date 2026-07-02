@@ -38,6 +38,13 @@
     </div>
   </div>
 
+  <div class="card" id="pacificCard" style="display:none">
+    <h2>Pacific Strategy</h2>
+    <div><span id="pacificMode" class="badge">-</span></div>
+    <p id="pacificExplain" class="pacific-explain"></p>
+    <div class="ladder" id="pacificLadder"></div>
+  </div>
+
   <div class="card">
     <h2>Balances</h2>
     <div class="grid">
@@ -92,7 +99,75 @@
     }
 
     function formatTime(iso) {
-      return new Date(iso).toLocaleString();
+      const d = new Date(iso);
+      if (isNaN(d.getTime()) || d.getFullYear() < 2000) return '—';
+      return d.toLocaleString();
+    }
+
+    function pctStr(x) { return (x * 100).toFixed(1) + '%'; }
+    function eur(x) { return '€' + fmt(x, 2); }
+
+    function explainPacific(p) {
+      const rec = pctStr(p.escapeRecoveryPct);
+      if (p.holdingBtc) {
+        if (p.mode === 'hard-stop')
+          return 'Hard-stop zone. Drawdown ' + pctStr(-p.moveFromLastTradePct)
+            + ' ≥ ' + pctStr(p.hardStopLossPct) + '; sells at market.';
+        if (p.mode === 'escape-armed')
+          return 'Escape armed. Tracking low ' + eur(p.lowSinceTrade)
+            + '; sells at ' + eur(p.escapeTarget) + ' (+' + rec + ' from low).';
+        return 'Holding BTC. Sells at ' + eur(p.profitTarget) + ' (+' + pctStr(p.sellThresholdPct)
+          + '), or if price falls to ' + eur(p.escapeArmPrice) + ' (−' + pctStr(p.escapeDrawdownPct)
+          + ') sells on a ' + rec + ' bounce from the low.';
+      } else {
+        if (p.mode === 'escape-armed')
+          return 'Escape armed. Tracking peak ' + eur(p.highSinceTrade)
+            + '; buys back at ' + eur(p.escapeTarget) + ' (−' + rec + ' from peak).';
+        return 'Holding EUR. Buys back at ' + eur(p.profitTarget) + ' (−' + pctStr(p.buyThresholdPct)
+          + '), or if price rises to ' + eur(p.escapeArmPrice) + ' (+' + pctStr(p.escapeDrawdownPct)
+          + ') buys on a ' + rec + ' pullback from the peak.';
+      }
+    }
+
+    function renderLadder(p, currentPrice) {
+      const markers = [
+        { label: 'Last', price: p.lastTradePrice, cls: 'last' },
+        { label: p.holdingBtc ? 'Sell target' : 'Buy target', price: p.profitTarget, cls: 'profit' },
+        { label: 'Escape arm', price: p.escapeArmPrice, cls: 'escape-arm' },
+        { label: 'Now', price: currentPrice, cls: 'current' },
+      ];
+      if (p.escapeTarget != null)
+        markers.push({ label: 'Escape target', price: p.escapeTarget, cls: 'escape-target' });
+
+      const prices = markers.map(function (m) { return m.price; });
+      const min = Math.min.apply(null, prices);
+      const max = Math.max.apply(null, prices);
+      const span = (max - min) || 1;
+      const lo = min - span * 0.1;
+      const range = span * 1.2;
+
+      document.getElementById('pacificLadder').innerHTML =
+        '<div class="ladder-track"></div>' + markers.map(function (m) {
+          const left = ((m.price - lo) / range * 100).toFixed(2);
+          return '<div class="ladder-marker ' + m.cls + '" style="left:' + left + '%">'
+            + '<span class="ml">' + m.label + '</span>'
+            + '<span class="tick"></span>'
+            + '<span class="mp">' + eur(m.price) + '</span></div>';
+        }).join('');
+    }
+
+    function renderPacific(p, currentPrice) {
+      const card = document.getElementById('pacificCard');
+      if (!p) { card.style.display = 'none'; return; }
+      card.style.display = 'block';
+
+      const modeEl = document.getElementById('pacificMode');
+      const labels = { 'normal': 'Normal', 'escape-armed': 'Escape armed', 'hard-stop': 'Hard-stop' };
+      modeEl.textContent = labels[p.mode] || p.mode;
+      modeEl.className = 'badge ' + p.mode;
+
+      document.getElementById('pacificExplain').textContent = explainPacific(p);
+      renderLadder(p, currentPrice);
     }
 
     function formatUptime(ms) {
@@ -132,6 +207,9 @@
         const pnlEl = document.getElementById('pnl');
         pnlEl.textContent = '€' + fmt(status.pnlEur, 2) + ' (' + fmt(status.pnlPct, 2) + '%)';
         pnlEl.className = 'value ' + (status.pnlEur >= 0 ? 'pnl-positive' : 'pnl-negative');
+
+        // Pacific strategy card
+        renderPacific(status.pacific, status.currentBtcPrice);
 
         // Balances
         document.getElementById('btcBalance').textContent = fmt(status.btcBalance, 8);

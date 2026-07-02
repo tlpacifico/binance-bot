@@ -59,3 +59,21 @@ td { padding: 8px; border-bottom: 1px solid #21262d; }
 }
 
 #error { color: #f85149; padding: 10px; display: none; }
+
+.badge.normal { background: #3fb95033; color: #3fb950; }
+.badge.escape-armed { background: #d2992233; color: #d29922; }
+.badge.hard-stop { background: #f8514933; color: #f85149; }
+
+.pacific-explain { font-size: 0.9rem; color: #c9d1d9; line-height: 1.45; margin: 12px 0 20px; }
+
+.ladder { position: relative; height: 70px; margin: 28px 12px 12px; }
+.ladder-track { position: absolute; top: 34px; left: 0; right: 0; height: 4px; background: #30363d; border-radius: 2px; }
+.ladder-marker { position: absolute; transform: translateX(-50%); text-align: center; width: 80px; }
+.ladder-marker .ml { display: block; font-size: 0.7rem; color: #8b949e; height: 18px; }
+.ladder-marker .tick { display: block; width: 2px; height: 16px; margin: 0 auto; background: #8b949e; }
+.ladder-marker .mp { display: block; font-size: 0.72rem; color: #c9d1d9; margin-top: 4px; }
+.ladder-marker.profit .tick { background: #3fb950; }
+.ladder-marker.escape-arm .tick { background: #d29922; }
+.ladder-marker.escape-target .tick { background: #f7931a; }
+.ladder-marker.current .tick { background: #58a6ff; width: 3px; height: 22px; }
+.ladder-marker.current .ml, .ladder-marker.current .mp { color: #f0f6fc; font-weight: 700; }
