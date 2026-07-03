@@ -11,7 +11,7 @@ public sealed class PacificSettings
     public decimal MinTradeEur { get; set; } = 10m;
 
     // Trailing-escape (Pacific v2)
-    public decimal EscapeDrawdownPct { get; set; } = 0.05m;
+    public decimal EscapeDrawdownPct { get; set; } = 0.04m;
     public decimal EscapeRecoveryPct { get; set; } = 0.025m;
     public decimal HardStopLossPct { get; set; } = 0m; // 0 = disabled (BTC side only)
 }
