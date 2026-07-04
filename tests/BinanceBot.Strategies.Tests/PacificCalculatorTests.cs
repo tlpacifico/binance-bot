@@ -116,6 +116,31 @@ public class PacificCalculatorTests
         result.Reason.Should().Contain("trailing-escape");
     }
 
+    // ---- Trailing escape stays LATCHED once armed (regression: dead-band deadlock) ----
+
+    [Fact]
+    public void HoldingEur_PeakArmedThenRetracedBelowArmThreshold_ShouldStillEscapeBuy()
+    {
+        // lastTrade 60000; peak ran to highSinceTrade 63600 (+6%, past the +5% arm threshold).
+        // Price retraced to 62000 → instantaneous runup 3.33% < 5%, but escape must stay ARMED
+        // because the high already crossed the threshold. escape target = 63600 * 0.975 = 62010;
+        // price 62000 <= 62010 → Buy. (Old bug: disarmed on the retrace → normal Hold → deadlock.)
+        var result = Eval(62_000m, Eur(62_000m), 60_000m, 60_000m, 63_600m);
+        result.Action.Should().Be(TradeAction.Buy);
+        result.Reason.Should().Contain("trailing-escape");
+    }
+
+    [Fact]
+    public void HoldingBtc_TroughArmedThenBouncedAboveArmThreshold_ShouldStillEscapeSell()
+    {
+        // lastTrade 60000; trough fell to lowSinceTrade 56400 (-6%, past the -5% arm threshold).
+        // Price bounced to 58000 → instantaneous drawdown 3.33% < 5%, but escape must stay ARMED.
+        // escape target = 56400 * 1.025 = 57810; price 58000 >= 57810 → Sell.
+        var result = Eval(58_000m, Btc(58_000m), 60_000m, 56_400m, 60_000m);
+        result.Action.Should().Be(TradeAction.Sell);
+        result.Reason.Should().Contain("trailing-escape");
+    }
+
     // ---- Guards ----
 
     [Fact]

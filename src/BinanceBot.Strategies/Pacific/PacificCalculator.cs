@@ -55,12 +55,14 @@ public static class PacificCalculator
 
         var drawdown = lastTradePrice > 0 ? (lastTradePrice - currentPrice) / lastTradePrice : 0m;
 
-        // 2. Hard stop-loss (if enabled)
+        // 2. Hard stop-loss (if enabled) — current-price based: a stop should stand down if price recovers.
         if (hardStopLossPct > 0 && drawdown >= hardStopLossPct)
             return SellAll($"Sell all BTC: drawdown {drawdown:P1} >= hard stop {hardStopLossPct:P1} (hard-stop)");
 
-        // 3. Trailing escape
-        if (drawdown >= escapeDrawdownPct)
+        // 3. Trailing escape — LATCHED by the low since the trade (not the current price), so the
+        // escape stays armed while price bounces back and reliably fires on the recovery.
+        var maxDrawdown = lastTradePrice > 0 ? (lastTradePrice - lowSinceTrade) / lastTradePrice : 0m;
+        if (maxDrawdown >= escapeDrawdownPct)
         {
             var escapeTarget = lowSinceTrade * (1 + escapeRecoveryPct);
             return currentPrice >= escapeTarget
@@ -91,10 +93,11 @@ public static class PacificCalculator
         if (currentPrice <= profitTarget)
             return BuyAll($"Buy all EUR: price €{currentPrice:N2} <= profit target €{profitTarget:N2} (normal)");
 
-        var runup = lastTradePrice > 0 ? (currentPrice - lastTradePrice) / lastTradePrice : 0m;
-
-        // 2. Trailing escape (no hard stop on EUR side — run-up is opportunity cost, not loss)
-        if (runup >= escapeDrawdownPct)
+        // 2. Trailing escape (no hard stop on EUR side — run-up is opportunity cost, not loss).
+        // LATCHED by the high since the trade (not the current price), so the escape stays armed
+        // while price falls back and reliably fires on the pullback.
+        var maxRunup = lastTradePrice > 0 ? (highSinceTrade - lastTradePrice) / lastTradePrice : 0m;
+        if (maxRunup >= escapeDrawdownPct)
         {
             var escapeTarget = highSinceTrade * (1 - escapeRecoveryPct);
             return currentPrice <= escapeTarget

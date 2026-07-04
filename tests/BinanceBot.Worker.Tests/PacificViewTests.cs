@@ -72,6 +72,26 @@ public class PacificViewTests
     }
 
     [Fact]
+    public void HoldingEur_PeakArmedThenRetraced_StaysArmed()
+    {
+        // high 63600 (+6%, past +5% arm) but current 62000 (instantaneous run-up 3.33% < 5%).
+        // Latched by the high → still escape-armed; escape target = 63600 * 0.975 = 62010.
+        var v = Compute(false, 60_000m, 62_000m, 60_000m, 63_600m)!;
+        v.Mode.Should().Be(PacificView.ModeEscapeArmed);
+        v.EscapeTarget.Should().Be(62_010m);
+    }
+
+    [Fact]
+    public void HoldingBtc_TroughArmedThenBounced_StaysArmed()
+    {
+        // low 56400 (-6%, past -5% arm) but current 58000 (instantaneous drawdown 3.33% < 5%).
+        // Latched by the low → still escape-armed; escape target = 56400 * 1.025 = 57810.
+        var v = Compute(true, 60_000m, 58_000m, 56_400m, 60_000m)!;
+        v.Mode.Should().Be(PacificView.ModeEscapeArmed);
+        v.EscapeTarget.Should().Be(57_810m);
+    }
+
+    [Fact]
     public void MoveFromLastTradePct_IsSigned()
     {
         Compute(false, 60_000m, 63_000m, 60_000m, 63_000m)!.MoveFromLastTradePct.Should().Be(0.05m);

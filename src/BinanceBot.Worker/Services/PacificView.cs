@@ -41,7 +41,8 @@ public sealed record PacificView(
         {
             var profitTarget = lastTradePrice * (1 + sellThresholdPct);
             var escapeArmPrice = lastTradePrice * (1 - escapeDrawdownPct);
-            var drawdown = (lastTradePrice - currentPrice) / lastTradePrice;
+            var drawdown = (lastTradePrice - currentPrice) / lastTradePrice;       // current, for hard-stop
+            var maxDrawdown = (lastTradePrice - lowSinceTrade) / lastTradePrice;   // latched, arms the escape
 
             string mode;
             decimal? escapeTarget = null;
@@ -49,7 +50,7 @@ public sealed record PacificView(
             {
                 mode = ModeHardStop;
             }
-            else if (drawdown >= escapeDrawdownPct)
+            else if (maxDrawdown >= escapeDrawdownPct)
             {
                 mode = ModeEscapeArmed;
                 escapeTarget = lowSinceTrade * (1 + escapeRecoveryPct);
@@ -67,11 +68,11 @@ public sealed record PacificView(
         {
             var profitTarget = lastTradePrice * (1 - buyThresholdPct);
             var escapeArmPrice = lastTradePrice * (1 + escapeDrawdownPct);
-            var runup = (currentPrice - lastTradePrice) / lastTradePrice;
+            var maxRunup = (highSinceTrade - lastTradePrice) / lastTradePrice;   // latched, arms the escape
 
             string mode;
             decimal? escapeTarget = null;
-            if (runup >= escapeDrawdownPct)
+            if (maxRunup >= escapeDrawdownPct)
             {
                 mode = ModeEscapeArmed;
                 escapeTarget = highSinceTrade * (1 - escapeRecoveryPct);
