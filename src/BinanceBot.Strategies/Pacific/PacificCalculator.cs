@@ -8,13 +8,11 @@ public static class PacificCalculator
         decimal currentPrice,
         Portfolio portfolio,
         decimal lastTradePrice,
-        decimal lowSinceTrade,
         decimal highSinceTrade,
         decimal sellThresholdPct,
         decimal buyThresholdPct,
         decimal escapeDrawdownPct,
         decimal escapeRecoveryPct,
-        decimal hardStopLossPct,
         decimal minTradeEur)
     {
         if (portfolio.TotalValueEur <= 0)
@@ -24,8 +22,7 @@ public static class PacificCalculator
         var holdingBtc = btcValueEur > portfolio.EurBalance;
 
         return holdingBtc
-            ? EvaluateSell(currentPrice, portfolio, lastTradePrice, lowSinceTrade,
-                sellThresholdPct, escapeDrawdownPct, escapeRecoveryPct, hardStopLossPct, minTradeEur)
+            ? EvaluateSell(currentPrice, portfolio, lastTradePrice, sellThresholdPct, minTradeEur)
             : EvaluateBuy(currentPrice, portfolio, lastTradePrice, highSinceTrade,
                 buyThresholdPct, escapeDrawdownPct, escapeRecoveryPct, minTradeEur);
     }
@@ -34,11 +31,7 @@ public static class PacificCalculator
         decimal currentPrice,
         Portfolio portfolio,
         decimal lastTradePrice,
-        decimal lowSinceTrade,
         decimal sellThresholdPct,
-        decimal escapeDrawdownPct,
-        decimal escapeRecoveryPct,
-        decimal hardStopLossPct,
         decimal minTradeEur)
     {
         var sellValueEur = portfolio.BtcBalance * currentPrice;
@@ -48,27 +41,10 @@ public static class PacificCalculator
                 ? TradeDecision.Hold($"Sell value €{sellValueEur:N2} below minimum €{minTradeEur:N2}")
                 : TradeDecision.Sell(portfolio.BtcBalance, reason);
 
-        // 1. Profit target (preferred)
+        // Only ever sell at a profit — never below the purchase price. No escape, no hard stop.
         var profitTarget = lastTradePrice * (1 + sellThresholdPct);
         if (currentPrice >= profitTarget)
             return SellAll($"Sell all BTC: price €{currentPrice:N2} >= profit target €{profitTarget:N2} (normal)");
-
-        var drawdown = lastTradePrice > 0 ? (lastTradePrice - currentPrice) / lastTradePrice : 0m;
-
-        // 2. Hard stop-loss (if enabled) — current-price based: a stop should stand down if price recovers.
-        if (hardStopLossPct > 0 && drawdown >= hardStopLossPct)
-            return SellAll($"Sell all BTC: drawdown {drawdown:P1} >= hard stop {hardStopLossPct:P1} (hard-stop)");
-
-        // 3. Trailing escape — LATCHED by the low since the trade (not the current price), so the
-        // escape stays armed while price bounces back and reliably fires on the recovery.
-        var maxDrawdown = lastTradePrice > 0 ? (lastTradePrice - lowSinceTrade) / lastTradePrice : 0m;
-        if (maxDrawdown >= escapeDrawdownPct)
-        {
-            var escapeTarget = lowSinceTrade * (1 + escapeRecoveryPct);
-            return currentPrice >= escapeTarget
-                ? SellAll($"Sell all BTC: price €{currentPrice:N2} >= escape target €{escapeTarget:N2} (trailing-escape)")
-                : TradeDecision.Hold($"Escape armed: price €{currentPrice:N2} below escape target €{escapeTarget:N2} (trailing-escape)");
-        }
 
         return TradeDecision.Hold($"Price €{currentPrice:N2} below profit target €{profitTarget:N2} (normal)");
     }
