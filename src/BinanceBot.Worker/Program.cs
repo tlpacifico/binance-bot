@@ -147,8 +147,7 @@ try
                 sellThresholdPct: pacificSettings.SellThresholdPct,
                 buyThresholdPct: pacificSettings.BuyThresholdPct,
                 escapeDrawdownPct: pacificSettings.EscapeDrawdownPct,
-                escapeRecoveryPct: pacificSettings.EscapeRecoveryPct,
-                hardStopLossPct: pacificSettings.HardStopLossPct);
+                escapeRecoveryPct: pacificSettings.EscapeRecoveryPct);
 
             if (view is not null)
             {
@@ -169,7 +168,6 @@ try
                     buyThresholdPct = pacificSettings.BuyThresholdPct,
                     escapeDrawdownPct = pacificSettings.EscapeDrawdownPct,
                     escapeRecoveryPct = pacificSettings.EscapeRecoveryPct,
-                    hardStopLossPct = pacificSettings.HardStopLossPct,
                 };
             }
         }
