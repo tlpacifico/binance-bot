@@ -110,15 +110,8 @@
     function explainPacific(p) {
       const rec = pctStr(p.escapeRecoveryPct);
       if (p.holdingBtc) {
-        if (p.mode === 'hard-stop')
-          return 'Hard-stop zone. Drawdown ' + pctStr(-p.moveFromLastTradePct)
-            + ' ≥ ' + pctStr(p.hardStopLossPct) + '; sells at market.';
-        if (p.mode === 'escape-armed')
-          return 'Escape armed. Tracking low ' + eur(p.lowSinceTrade)
-            + '; sells at ' + eur(p.escapeTarget) + ' (+' + rec + ' from low).';
         return 'Holding BTC. Sells at ' + eur(p.profitTarget) + ' (+' + pctStr(p.sellThresholdPct)
-          + '), or if price falls to ' + eur(p.escapeArmPrice) + ' (−' + pctStr(p.escapeDrawdownPct)
-          + ') sells on a ' + rec + ' bounce from the low.';
+          + '). Never sells below the buy price.';
       } else {
         if (p.mode === 'escape-armed')
           return 'Escape armed. Tracking peak ' + eur(p.highSinceTrade)
@@ -133,9 +126,10 @@
       const markers = [
         { label: 'Last', price: p.lastTradePrice, cls: 'last' },
         { label: p.holdingBtc ? 'Sell target' : 'Buy target', price: p.profitTarget, cls: 'profit' },
-        { label: 'Escape arm', price: p.escapeArmPrice, cls: 'escape-arm' },
         { label: 'Now', price: currentPrice, cls: 'current' },
       ];
+      if (p.escapeArmPrice != null)
+        markers.push({ label: 'Escape arm', price: p.escapeArmPrice, cls: 'escape-arm' });
       if (p.escapeTarget != null)
         markers.push({ label: 'Escape target', price: p.escapeTarget, cls: 'escape-target' });
 
@@ -162,7 +156,7 @@
       card.style.display = 'block';
 
       const modeEl = document.getElementById('pacificMode');
-      const labels = { 'normal': 'Normal', 'escape-armed': 'Escape armed', 'hard-stop': 'Hard-stop' };
+      const labels = { 'normal': 'Normal', 'escape-armed': 'Escape armed' };
       modeEl.textContent = labels[p.mode] || p.mode;
       modeEl.className = 'badge ' + p.mode;
 

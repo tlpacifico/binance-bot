@@ -19,8 +19,7 @@ public class PacificStrategyTests
             CheckIntervalSeconds = 30,
             MinTradeEur = 10m,
             EscapeDrawdownPct = 0.05m,
-            EscapeRecoveryPct = 0.025m,
-            HardStopLossPct = 0m
+            EscapeRecoveryPct = 0.025m
         });
         return new PacificStrategy(settings, NullLogger<PacificStrategy>.Instance);
     }

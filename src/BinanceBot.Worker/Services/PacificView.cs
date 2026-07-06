@@ -2,15 +2,16 @@ namespace BinanceBot.Worker.Services;
 
 /// <summary>
 /// Read-only projection of the Pacific strategy's decision state for the dashboard.
-/// Mirrors PacificCalculator's mode logic so the dashboard shows exactly what the
-/// engine would do. Display-only: it never drives trades.
+/// Mirrors PacificCalculator: the sell side (holding BTC) only ever sells at the profit
+/// target — never below buy — so it has no escape and is always Normal. The buy side keeps
+/// the latched trailing escape. Display-only: it never drives trades.
 /// </summary>
 public sealed record PacificView(
     bool HoldingBtc,
     string Mode,
     decimal LastTradePrice,
     decimal ProfitTarget,
-    decimal EscapeArmPrice,
+    decimal? EscapeArmPrice,
     decimal? EscapeTarget,
     decimal ActiveTarget,
     decimal LowSinceTrade,
@@ -19,7 +20,6 @@ public sealed record PacificView(
 {
     public const string ModeNormal = "normal";
     public const string ModeEscapeArmed = "escape-armed";
-    public const string ModeHardStop = "hard-stop";
 
     public static PacificView? Compute(
         bool holdingBtc,
@@ -30,8 +30,7 @@ public sealed record PacificView(
         decimal sellThresholdPct,
         decimal buyThresholdPct,
         decimal escapeDrawdownPct,
-        decimal escapeRecoveryPct,
-        decimal hardStopLossPct)
+        decimal escapeRecoveryPct)
     {
         if (lastTradePrice <= 0) return null;
 
@@ -39,29 +38,10 @@ public sealed record PacificView(
 
         if (holdingBtc)
         {
+            // Sell side: profit target only, never below buy → always Normal, no escape.
             var profitTarget = lastTradePrice * (1 + sellThresholdPct);
-            var escapeArmPrice = lastTradePrice * (1 - escapeDrawdownPct);
-            var drawdown = (lastTradePrice - currentPrice) / lastTradePrice;       // current, for hard-stop
-            var maxDrawdown = (lastTradePrice - lowSinceTrade) / lastTradePrice;   // latched, arms the escape
-
-            string mode;
-            decimal? escapeTarget = null;
-            if (hardStopLossPct > 0 && drawdown >= hardStopLossPct)
-            {
-                mode = ModeHardStop;
-            }
-            else if (maxDrawdown >= escapeDrawdownPct)
-            {
-                mode = ModeEscapeArmed;
-                escapeTarget = lowSinceTrade * (1 + escapeRecoveryPct);
-            }
-            else
-            {
-                mode = ModeNormal;
-            }
-
-            return new PacificView(true, mode, lastTradePrice, profitTarget,
-                escapeArmPrice, escapeTarget, escapeTarget ?? profitTarget,
+            return new PacificView(true, ModeNormal, lastTradePrice, profitTarget,
+                null, null, profitTarget,
                 lowSinceTrade, highSinceTrade, movePct);
         }
         else

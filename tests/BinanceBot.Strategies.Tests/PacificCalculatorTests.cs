@@ -14,11 +14,10 @@ public class PacificCalculatorTests
     private const decimal MinTrade = 10m;
 
     private static TradeDecision Eval(
-        decimal price, Portfolio portfolio, decimal lastTrade,
-        decimal lowSinceTrade, decimal highSinceTrade, decimal hardStop = 0m) =>
+        decimal price, Portfolio portfolio, decimal lastTrade, decimal highSinceTrade) =>
         PacificCalculator.Evaluate(
-            price, portfolio, lastTrade, lowSinceTrade, highSinceTrade,
-            Sell, Buy, EscapeDrawdown, EscapeRecovery, hardStop, MinTrade);
+            price, portfolio, lastTrade, highSinceTrade,
+            Sell, Buy, EscapeDrawdown, EscapeRecovery, MinTrade);
 
     private static Portfolio Btc(decimal price) =>
         new() { BtcBalance = 0.01m, EurBalance = 5m, CurrentBtcPrice = price };
@@ -26,83 +25,62 @@ public class PacificCalculatorTests
     private static Portfolio Eur(decimal price) =>
         new() { BtcBalance = 0m, EurBalance = 500m, CurrentBtcPrice = price };
 
-    // ---- Normal profit mode ----
+    // ---- Sell side: profit target only, never below buy ----
 
     [Fact]
     public void HoldingBtc_PriceAtProfitTarget_ShouldSellNormal()
     {
         // target = 60000 * 1.025 = 61500
-        var result = Eval(61_500m, Btc(61_500m), 60_000m, 60_000m, 61_500m);
+        var result = Eval(61_500m, Btc(61_500m), 60_000m, 61_500m);
         result.Action.Should().Be(TradeAction.Sell);
         result.Reason.Should().Contain("normal");
     }
 
     [Fact]
-    public void HoldingBtc_BelowProfit_SmallDrawdown_ShouldHold()
+    public void HoldingBtc_BelowProfit_ShouldHold()
     {
-        // price 59000, lastTrade 60000 → drawdown 1.7% < 5% escape, below profit → Hold
-        var result = Eval(59_000m, Btc(59_000m), 60_000m, 59_000m, 60_000m);
+        var result = Eval(59_000m, Btc(59_000m), 60_000m, 60_000m);
         result.Action.Should().Be(TradeAction.Hold);
         result.Reason.Should().Contain("normal");
     }
+
+    [Fact]
+    public void HoldingBtc_BelowProfitTarget_NeverSells()
+    {
+        // Invariant: nothing at or below buy (and up to just under +2.5%) may sell.
+        const decimal buy = 60_000m;
+        foreach (var price in new[] { 54_000m, 57_000m, 59_400m, 59_940m, 60_000m, 61_499m })
+        {
+            var result = Eval(price, Btc(price), buy, buy);
+            result.Action.Should().Be(TradeAction.Hold, "price {0} is below the +2.5% profit target", price);
+        }
+    }
+
+    [Fact]
+    public void HoldingBtc_DeepDipThenPartialRecovery_HoldsInsteadOfEscapeSelling()
+    {
+        // Old behavior escape-sold at a loss here; new behavior holds (never sell below buy).
+        var result = Eval(58_000m, Btc(58_000m), 60_000m, 60_000m);
+        result.Action.Should().Be(TradeAction.Hold);
+        result.Reason.Should().Contain("normal");
+    }
+
+    // ---- Buy side: unchanged (profit target + latched escape) ----
 
     [Fact]
     public void HoldingEur_PriceAtProfitTarget_ShouldBuyNormal()
     {
         // target = 60000 * 0.975 = 58500
-        var result = Eval(58_500m, Eur(58_500m), 60_000m, 58_500m, 60_000m);
+        var result = Eval(58_500m, Eur(58_500m), 60_000m, 60_000m);
         result.Action.Should().Be(TradeAction.Buy);
         result.Reason.Should().Contain("normal");
     }
 
-    // ---- Trailing escape (BTC side) ----
-
-    [Fact]
-    public void HoldingBtc_DrawdownReached_PriceRecoveredFromLow_ShouldEscapeSell()
-    {
-        // lastTrade 60000, price 51250, drawdown = 14.6% >= 5%
-        // lowSinceTrade 50000 → escape target = 50000 * 1.025 = 51250 → price >= target → Sell
-        var result = Eval(51_250m, Btc(51_250m), 60_000m, 50_000m, 60_000m);
-        result.Action.Should().Be(TradeAction.Sell);
-        result.Reason.Should().Contain("trailing-escape");
-    }
-
-    [Fact]
-    public void HoldingBtc_DrawdownReached_NoBounceYet_ShouldHold()
-    {
-        // lowSinceTrade 50000 → escape target 51250; price 50500 < target → Hold (armed)
-        var result = Eval(50_500m, Btc(50_500m), 60_000m, 50_000m, 60_000m);
-        result.Action.Should().Be(TradeAction.Hold);
-        result.Reason.Should().Contain("trailing-escape");
-    }
-
-    // ---- Hard stop-loss ----
-
-    [Fact]
-    public void HoldingBtc_HardStopDisabled_DeepLoss_NoForcedSell()
-    {
-        // drawdown 30%, hardStop=0 (disabled); lowSinceTrade=price so no bounce → Hold
-        var result = Eval(42_000m, Btc(42_000m), 60_000m, 42_000m, 60_000m, hardStop: 0m);
-        result.Action.Should().Be(TradeAction.Hold);
-    }
-
-    [Fact]
-    public void HoldingBtc_HardStopEnabled_DrawdownExceeds_ShouldForceSell()
-    {
-        // drawdown 30% >= hardStop 20%; lowSinceTrade=price so no trailing bounce → hard-stop fires
-        var result = Eval(42_000m, Btc(42_000m), 60_000m, 42_000m, 60_000m, hardStop: 0.20m);
-        result.Action.Should().Be(TradeAction.Sell);
-        result.Reason.Should().Contain("hard-stop");
-    }
-
-    // ---- Trailing escape (EUR side, symmetric) ----
-
     [Fact]
     public void HoldingEur_RunupReached_PriceFellFromHigh_ShouldEscapeBuy()
     {
-        // lastTrade 60000 (last sell), price 70200, runup = 17% >= 5%
         // highSinceTrade 72000 → escape target = 72000 * 0.975 = 70200 → price <= target → Buy
-        var result = Eval(70_200m, Eur(70_200m), 60_000m, 60_000m, 72_000m);
+        var result = Eval(70_200m, Eur(70_200m), 60_000m, 72_000m);
         result.Action.Should().Be(TradeAction.Buy);
         result.Reason.Should().Contain("trailing-escape");
     }
@@ -110,34 +88,19 @@ public class PacificCalculatorTests
     [Fact]
     public void HoldingEur_RunupReached_NoPullbackYet_ShouldHold()
     {
-        // highSinceTrade 72000 → escape target 70200; price 71000 > target → Hold (armed)
-        var result = Eval(71_000m, Eur(71_000m), 60_000m, 60_000m, 72_000m);
+        // escape target 70200; price 71000 > target → Hold (armed)
+        var result = Eval(71_000m, Eur(71_000m), 60_000m, 72_000m);
         result.Action.Should().Be(TradeAction.Hold);
         result.Reason.Should().Contain("trailing-escape");
     }
 
-    // ---- Trailing escape stays LATCHED once armed (regression: dead-band deadlock) ----
-
     [Fact]
     public void HoldingEur_PeakArmedThenRetracedBelowArmThreshold_ShouldStillEscapeBuy()
     {
-        // lastTrade 60000; peak ran to highSinceTrade 63600 (+6%, past the +5% arm threshold).
-        // Price retraced to 62000 → instantaneous runup 3.33% < 5%, but escape must stay ARMED
-        // because the high already crossed the threshold. escape target = 63600 * 0.975 = 62010;
-        // price 62000 <= 62010 → Buy. (Old bug: disarmed on the retrace → normal Hold → deadlock.)
-        var result = Eval(62_000m, Eur(62_000m), 60_000m, 60_000m, 63_600m);
+        // high 63600 (+6%) but current 62000 (instantaneous run-up 3.33% < 5%); latched by high.
+        // escape target = 63600 * 0.975 = 62010; price 62000 <= 62010 → Buy.
+        var result = Eval(62_000m, Eur(62_000m), 60_000m, 63_600m);
         result.Action.Should().Be(TradeAction.Buy);
-        result.Reason.Should().Contain("trailing-escape");
-    }
-
-    [Fact]
-    public void HoldingBtc_TroughArmedThenBouncedAboveArmThreshold_ShouldStillEscapeSell()
-    {
-        // lastTrade 60000; trough fell to lowSinceTrade 56400 (-6%, past the -5% arm threshold).
-        // Price bounced to 58000 → instantaneous drawdown 3.33% < 5%, but escape must stay ARMED.
-        // escape target = 56400 * 1.025 = 57810; price 58000 >= 57810 → Sell.
-        var result = Eval(58_000m, Btc(58_000m), 60_000m, 56_400m, 60_000m);
-        result.Action.Should().Be(TradeAction.Sell);
         result.Reason.Should().Contain("trailing-escape");
     }
 
@@ -147,7 +110,7 @@ public class PacificCalculatorTests
     public void EmptyPortfolio_ShouldHold()
     {
         var portfolio = new Portfolio { BtcBalance = 0m, EurBalance = 0m, CurrentBtcPrice = 60_000m };
-        var result = Eval(60_000m, portfolio, 60_000m, 60_000m, 60_000m);
+        var result = Eval(60_000m, portfolio, 60_000m, 60_000m);
         result.Action.Should().Be(TradeAction.Hold);
         result.Reason.Should().Contain("zero");
     }
@@ -157,8 +120,8 @@ public class PacificCalculatorTests
     {
         var portfolio = new Portfolio { BtcBalance = 0m, EurBalance = 5m, CurrentBtcPrice = 58_000m };
         // at profit target but EUR balance €5 < €10 min
-        var result = PacificCalculator.Evaluate(58_500m, portfolio, 60_000m, 58_500m, 60_000m,
-            Sell, Buy, EscapeDrawdown, EscapeRecovery, 0m, MinTrade);
+        var result = PacificCalculator.Evaluate(58_500m, portfolio, 60_000m, 60_000m,
+            Sell, Buy, EscapeDrawdown, EscapeRecovery, MinTrade);
         result.Action.Should().Be(TradeAction.Hold);
         result.Reason.Should().Contain("minimum");
     }

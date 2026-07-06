@@ -90,9 +90,9 @@ public sealed class PacificStrategy : ITradingStrategy
     private TradeDecision Evaluate(decimal price, Portfolio portfolio, decimal lastTradePrice,
         decimal lowSinceTrade, decimal highSinceTrade) =>
         PacificCalculator.Evaluate(
-            price, portfolio, lastTradePrice, lowSinceTrade, highSinceTrade,
+            price, portfolio, lastTradePrice, highSinceTrade,
             _settings.SellThresholdPct, _settings.BuyThresholdPct,
-            _settings.EscapeDrawdownPct, _settings.EscapeRecoveryPct, _settings.HardStopLossPct,
+            _settings.EscapeDrawdownPct, _settings.EscapeRecoveryPct,
             _settings.MinTradeEur);
 
     private static decimal GetLastTradePrice(StrategyContext context)
