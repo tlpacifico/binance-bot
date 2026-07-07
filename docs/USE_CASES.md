@@ -81,7 +81,7 @@ The `/api/health` endpoint (no authentication required) returns the bot's uptime
 
 **Actor:** Bot (autonomous)
 
-When the bot restarts, it resumes from the last saved state in the SQLite database. If the saved state disagrees with the actual Binance wallet balances (e.g., a manual trade was made on the exchange), the bot reconciles by trusting the exchange balances and updating the local state accordingly.
+When the bot restarts, it resumes from the last saved state in the PostgreSQL database. If the saved state disagrees with the actual Binance wallet balances (e.g., a manual trade was made on the exchange), the bot reconciles by trusting the exchange balances and updating the local state accordingly.
 
 ---
 

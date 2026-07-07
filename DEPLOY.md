@@ -1,271 +1,98 @@
 # Deploy Guide - Binance Trading Bot
 
-## Pre-requisitos
+O deploy é **automático** via GitHub Actions (`.github/workflows/deploy.yml`).
+Não há deploy manual — não é preciso SSH para lançar novas versões.
 
-- VPS com Ubuntu 22.04+ (ex: Contabo Cloud VPS)
-- Acesso root via SSH
-- API Key da Binance com Spot Trading ativo
-- Bot do Telegram criado via BotFather
+## Como funciona
 
----
+Qualquer push para `master` dispara o pipeline (também dá para rodar à mão em
+**Actions → Deploy Binance Bot → Run workflow**, com opção de pular os testes
+para hotfixes urgentes). O pipeline tem 3 jobs:
 
-## 1. Primeiro Deploy
+1. **Test** — `dotnet test` em Release.
+2. **Build & Push** — builda a imagem Docker e publica em
+   `ghcr.io/<repo>:latest` (e com tag do short SHA).
+3. **Deploy VPS** — por SSH: copia o `deploy/docker-compose.yml` para
+   `/opt/binance-bot`, escreve o `.env` a partir dos GitHub Secrets, faz
+   `docker compose pull` + `docker compose up -d`, remove imagens antigas e
+   faz health check em `http://localhost:3000/api/health` (falha o deploy se
+   não subir em 60s).
 
-### 1.1 Configurar o .env
+## Configuração (GitHub Secrets)
 
-Antes de copiar para o servidor, cria o ficheiro `.env` a partir do exemplo:
+Toda a configuração vem dos **Secrets do repositório** (Settings → Secrets and
+variables → Actions). O `.env` na VPS é **reescrito a cada deploy** a partir
+deles — editar o `.env` na VPS à mão não adianta, some no próximo deploy.
+
+Secrets usados:
+
+| Secret | Uso |
+|---|---|
+| `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` | Acesso SSH à VPS |
+| `CONNECTION_STRING` | Connection string do PostgreSQL |
+| `BINANCE_API_KEY`, `BINANCE_API_SECRET` | API da Binance (Spot Trading) |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Bot do Telegram |
+| `DASHBOARD_AUTH_TOKEN` | Token de acesso ao dashboard |
+
+Para mudar qualquer valor de config: **edite o Secret e re-rode o deploy**.
+
+## Estrutura na VPS
+
+```
+/opt/binance-bot/
+  ├── docker-compose.yml   # copiado pelo CI
+  └── .env                 # gerado pelo CI a partir dos Secrets (NUNCA commitar)
+```
+
+O container roda como `binance-bot` (imagem `ghcr.io/tlpacifico/binance-bot:latest`).
+O PostgreSQL fica no host (ver `CONNECTION_STRING`), não em container do compose.
+
+## Operação do dia-a-dia (SSH na VPS)
 
 ```bash
-cp .env.example .env
+cd /opt/binance-bot
+
+docker compose ps                 # estado do container
+docker logs binance-bot -f        # logs em tempo real
+docker logs binance-bot --tail 50 # últimas 50 linhas
+docker compose restart            # reiniciar
+docker compose pull && docker compose up -d   # forçar atualização manual da imagem
 ```
 
-Preenche os valores:
+Health check: `curl http://localhost:3000/api/health`
 
-```env
-BINANCE_API_KEY=a_tua_api_key
-BINANCE_API_SECRET=o_teu_api_secret
-BINANCE_TESTNET=false
-TRADING_PAIR=BTC/EUR
-SELL_THRESHOLD_PCT=0.025
-BUY_THRESHOLD_PCT=0.025
-INITIAL_BALANCE_EUR=0
-POLL_INTERVAL_MS=30000
-TELEGRAM_BOT_TOKEN=o_teu_bot_token
-TELEGRAM_CHAT_ID=o_teu_chat_id
-DASHBOARD_PORT=3000
-DASHBOARD_AUTH_TOKEN=um_token_seguro_com_pelo_menos_16_caracteres
-LOG_LEVEL=info
-```
+## Base de dados (PostgreSQL)
 
-> **Nota:** Se `INITIAL_BALANCE_EUR=0`, o bot calcula automaticamente a partir do saldo da carteira.
-
-### 1.2 Copiar projeto para o servidor (Windows PowerShell)
-
-```powershell
-# Copiar sem node_modules (pesado e desnecessario)
-robocopy C:\Repos\Thacio\binance-bot C:\Temp\binance-bot /E /XD node_modules .git dist
-scp -r C:\Temp\binance-bot root@<IP>:/root/
-```
-
-Ou diretamente (mais lento, copia tudo):
-
-```powershell
-scp -r C:\Repos\Thacio\binance-bot root@<IP>:/root/
-```
-
-### 1.3 SSH e executar setup
+O estado (tabelas `BotState` e `Trades`) fica no PostgreSQL. Para inspecionar/
+corrigir valores, conecte com os dados da `CONNECTION_STRING`:
 
 ```bash
-ssh root@<IP>
-cd /root/binance-bot
-bash deploy/setup.sh
+psql -h <host> -U <user> -d <database>
 ```
 
-O script faz tudo automaticamente:
-- Cria user dedicado `botuser`
-- Instala Node.js 20 LTS
-- Instala dependencias e compila TypeScript
-- Configura systemd (auto-restart + boot automatico)
-- Abre porta 3000 no firewall
-- Mostra o IP do servidor para whitelist da Binance
+Exemplo — ajustar o capital aportado (baseline do P&L) após um depósito:
 
-### 1.4 Verificar
+```sql
+UPDATE "BotState" SET "InitialBalanceEur" = "InitialBalanceEur" + 100;  -- depósito de €100
+SELECT "Id", "InitialBalanceEur" FROM "BotState";
+```
 
+## Dashboard
+
+Acessar em `http://<VPS_HOST>:3000` e informar o `DASHBOARD_AUTH_TOKEN`.
+Mostra estado atual, preço BTC/EUR, preço alvo, P&L, saldos e histórico de trades.
+
+## Troubleshooting
+
+**Deploy falhou no health check** — ver os logs no final do job de deploy
+(ele imprime `docker logs binance-bot --tail 50`) ou na VPS:
+`docker logs binance-bot --tail 100`.
+
+**Erro "InvalidNonce" / Timestamp** — relógio da VPS dessincronizado:
 ```bash
-# Status do servico
-systemctl status binance-bot
-
-# Health check
-curl http://localhost:3000/api/health
-
-# Logs em tempo real
-journalctl -u binance-bot -f
-
-# Ultimas 50 linhas de log
-journalctl -u binance-bot --no-pager -n 50
+timedatectl set-ntp true && systemctl restart systemd-timesyncd
+docker compose -f /opt/binance-bot/docker-compose.yml restart
 ```
 
-### 1.5 Configurar Binance API
-
-1. Binance > Account > API Management > Edit
-2. "Restrict access to trusted IPs only" > adicionar o IP do servidor
-3. Ativar "Enable Spot & Margin Trading"
-
----
-
-## 2. Atualizar o Codigo
-
-Quando fizeres alteracoes no codigo local:
-
-> **IMPORTANTE:** O bot corre em `/home/botuser/binance-bot/` (nao em `/root/binance-bot/`).
-> Copia sempre para `/home/botuser/binance-bot/`.
-
-### 2.1 Copiar ficheiros atualizados (Windows PowerShell)
-
-```powershell
-# Copiar src/ e public/ atualizados
-scp -r C:\Repos\Thacio\binance-bot\src root@<IP>:/home/botuser/binance-bot/
-scp -r C:\Repos\Thacio\binance-bot\public root@<IP>:/home/botuser/binance-bot/
-```
-
-Se mudaste `package.json` ou `tsconfig.json`:
-
-```powershell
-scp C:\Repos\Thacio\binance-bot\package.json root@<IP>:/home/botuser/binance-bot/
-scp C:\Repos\Thacio\binance-bot\package-lock.json root@<IP>:/home/botuser/binance-bot/
-scp C:\Repos\Thacio\binance-bot\tsconfig.json root@<IP>:/home/botuser/binance-bot/
-```
-
-### 2.2 Recompilar e reiniciar no servidor
-
-```bash
-ssh root@<IP>
-cd /home/botuser/binance-bot
-
-# Corrigir permissoes (porque scp como root muda o owner)
-chown -R botuser:botuser .
-
-# Instalar dependencias (so se mudaste package.json)
-sudo -u botuser npm ci
-
-# Recompilar
-sudo -u botuser npm run build
-
-# Remover dependencias de dev
-sudo -u botuser npm prune --omit=dev
-
-# Reiniciar
-systemctl restart binance-bot
-
-# Verificar logs (deve dizer "First run" ou "Syncing balance")
-journalctl -u binance-bot --no-pager -n 20
-```
-
-### 2.3 Reset da base de dados (se os saldos/historico estiverem errados)
-
-```bash
-ssh root@<IP>
-rm /home/botuser/binance-bot/data/bot.db*
-systemctl restart binance-bot
-
-# Confirmar que detectou estado da carteira Binance
-journalctl -u binance-bot --no-pager -n 20
-# Deve mostrar: "First run: detecting state from Binance wallet..."
-```
-
-### 2.4 Atualizar .env
-
-```bash
-ssh root@<IP>
-nano /home/botuser/binance-bot/.env
-# Editar valores, guardar com Ctrl+O, sair com Ctrl+X
-
-systemctl restart binance-bot
-```
-
----
-
-## 3. Comandos do Dia-a-Dia
-
-```bash
-# Ver status
-systemctl status binance-bot
-
-# Ver logs em tempo real
-journalctl -u binance-bot -f
-
-# Ver logs de erros
-journalctl -u binance-bot -p err --no-pager -n 50
-
-# Reiniciar
-systemctl restart binance-bot
-
-# Parar
-systemctl stop binance-bot
-
-# Iniciar
-systemctl start binance-bot
-
-# Health check
-curl http://localhost:3000/api/health
-```
-
----
-
-## 4. Dashboard
-
-Aceder no browser:
-
-```
-http://<IP_DO_SERVIDOR>:3000
-```
-
-Introduzir o `DASHBOARD_AUTH_TOKEN` quando pedido.
-
-O dashboard mostra:
-- Estado atual (HOLDING_BTC / HOLDING_EUR)
-- Preco atual BTC/EUR
-- Preco alvo (compra ou venda)
-- P&L (lucro/perda)
-- Saldos
-- Historico de trades
-
----
-
-## 5. Troubleshooting
-
-### Bot nao inicia
-```bash
-journalctl -u binance-bot --no-pager -n 100
-```
-Verificar se o `.env` esta preenchido corretamente.
-
-### Erro "InvalidNonce" / Timestamp
-O relogio do servidor esta dessincronizado. Corrigir:
-```bash
-timedatectl set-ntp true
-systemctl restart systemd-timesyncd
-systemctl restart binance-bot
-```
-
-### Dashboard nao abre no browser
-Verificar firewall:
-```bash
-ufw status
-# Deve mostrar porta 3000 ALLOW
-```
-Se nao estiver aberta:
-```bash
-ufw allow 3000/tcp
-```
-
-### Binance rejeita requests
-- Verificar se o IP do servidor esta na whitelist da API key
-- Verificar se "Enable Spot & Margin Trading" esta ativo
-- Verificar se as API keys no .env estao corretas
-
-### Sem espaco em disco
-```bash
-df -h
-# Limpar logs antigos se necessario
-journalctl --vacuum-time=7d
-```
-
----
-
-## 6. Estrutura no Servidor
-
-```
-/home/botuser/binance-bot/
-  ├── dist/          # Codigo compilado (gerado pelo build)
-  ├── data/          # SQLite database + WAL files
-  ├── deploy/        # Scripts de deploy
-  ├── public/        # Dashboard HTML/CSS
-  ├── src/           # Codigo fonte TypeScript
-  ├── node_modules/  # Dependencias
-  ├── .env           # Configuracao (NUNCA partilhar!)
-  ├── package.json
-  └── tsconfig.json
-```
-
-Servico systemd: `/etc/systemd/system/binance-bot.service`
+**Binance rejeita requests** — conferir se o IP da VPS está na whitelist da API
+key e se "Enable Spot & Margin Trading" está ativo.

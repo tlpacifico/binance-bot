@@ -16,7 +16,7 @@ This is a .NET 9 Binance trading bot with a **plugin-based strategy system**. Th
 ### Solution Structure
 
 - **BinanceBot.Core** — Domain: interfaces (`ITradingStrategy`, `IBinanceClient`, `ITelegramService`, `ITradeRepository`, `IStateRepository`), models (`TradeRecord`, `Portfolio`, `TradeDecision`, `StrategyContext`, `PriceData`), enums, configuration classes. Zero external dependencies.
-- **BinanceBot.Infrastructure** — Adapters: Binance.Net client, Telegram.Bot service + command system, EF Core + SQLite persistence.
+- **BinanceBot.Infrastructure** — Adapters: Binance.Net client, Telegram.Bot service + command system, EF Core + PostgreSQL (Npgsql) persistence.
 - **BinanceBot.Strategies** — Strategy plugins. Currently: `DcaRebalancingStrategy` with `AllocationCalculator` (pure logic).
 - **BinanceBot.Worker** — Host: ASP.NET Core Minimal APIs for dashboard, BackgroundServices for price monitoring, trading engine, and Telegram command polling.
 
@@ -30,7 +30,7 @@ Strategies implement `ITradingStrategy` and are registered in `StrategyResolver`
 
 ### State Persistence
 
-EF Core + SQLite (`data/bot.db`). Tables: `Trades` (history) and `BotState` (single-row: active strategy, balances, run state, strategy-specific JSON).
+EF Core + PostgreSQL (Npgsql). Connection string via `ConnectionStrings:DefaultConnection` (env var `ConnectionStrings__DefaultConnection` in production). Tables: `Trades` (history) and `BotState` (single-row: active strategy, balances, run state, strategy-specific JSON).
 
 ### Configuration
 
@@ -39,10 +39,6 @@ EF Core + SQLite (`data/bot.db`). Tables: `Trades` (history) and `BotState` (sin
 ### Dashboard
 
 ASP.NET Core Minimal APIs serving static files from `wwwroot/`. Endpoints: `/api/health`, `/api/status`, `/api/trades`. Bearer token auth on status/trades.
-
-## Legacy
-
-The original TypeScript bot is in `ts_backup/` for reference.
 
 ## Language Note
 
