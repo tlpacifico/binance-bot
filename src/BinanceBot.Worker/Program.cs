@@ -205,6 +205,18 @@ try
         return Results.Ok(new { trades, total = trades.Count });
     });
 
+    app.MapGet("/api/cashflows", async (
+        ICashFlowRepository cashFlowRepo,
+        HttpContext ctx,
+        int? limit) =>
+    {
+        if (!AuthorizeRequest(ctx, dashboardSettings.AuthToken))
+            return Results.Unauthorized();
+
+        var cashFlows = await cashFlowRepo.GetRecentAsync(limit ?? 50);
+        return Results.Ok(new { cashFlows, total = cashFlows.Count });
+    });
+
     app.Run($"http://0.0.0.0:{dashboardSettings.Port}");
 }
 catch (Exception ex)

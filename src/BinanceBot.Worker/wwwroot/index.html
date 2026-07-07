@@ -62,7 +62,7 @@
       </div>
       <div class="metric">
         <div class="value" id="initialBalance">-</div>
-        <div class="label">Initial Balance</div>
+        <div class="label">Capital Aportado</div>
       </div>
     </div>
   </div>
@@ -80,6 +80,21 @@
         </tr>
       </thead>
       <tbody id="trades"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Aportes / Saques</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Type</th>
+          <th>Amount</th>
+          <th>Balance After</th>
+        </tr>
+      </thead>
+      <tbody id="cashflows"></tbody>
     </table>
   </div>
 
@@ -173,17 +188,19 @@
 
     async function fetchData() {
       try {
-        const [statusRes, tradesRes] = await Promise.all([
+        const [statusRes, tradesRes, cashflowsRes] = await Promise.all([
           fetch('/api/status', { headers: headers }),
           fetch('/api/trades?limit=20', { headers: headers }),
+          fetch('/api/cashflows?limit=20', { headers: headers }),
         ]);
 
-        if (!statusRes.ok || !tradesRes.ok) {
+        if (!statusRes.ok || !tradesRes.ok || !cashflowsRes.ok) {
           throw new Error('Unauthorized or server error');
         }
 
         const status = await statusRes.json();
         const { trades } = await tradesRes.json();
+        const { cashFlows } = await cashflowsRes.json();
 
         document.getElementById('error').style.display = 'none';
 
@@ -228,6 +245,18 @@
             + '<td>€' + fmt(t.price, 2) + '</td>'
             + '<td>' + fmt(t.quantityBtc, 8) + '</td>'
             + '<td>€' + fmt(t.quoteAmountEur, 2) + '</td>'
+            + '</tr>';
+        }).join('');
+
+        // Cash flows
+        const cfBody = document.getElementById('cashflows');
+        cfBody.innerHTML = cashFlows.map(function(c) {
+          var type = c.type || '';
+          return '<tr>'
+            + '<td>' + formatTime(c.timestamp) + '</td>'
+            + '<td class="' + (type === 'Deposit' ? 'buy' : 'sell') + '">' + type + '</td>'
+            + '<td>€' + fmt(c.amountEur, 2) + '</td>'
+            + '<td>€' + fmt(c.balanceAfter, 2) + '</td>'
             + '</tr>';
         }).join('');
 
