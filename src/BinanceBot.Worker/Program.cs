@@ -41,6 +41,7 @@ try
         options.UseNpgsql(connectionString));
     builder.Services.AddScoped<ITradeRepository, TradeRepository>();
     builder.Services.AddScoped<IStateRepository, StateRepository>();
+    builder.Services.AddScoped<ICashFlowRepository, CashFlowRepository>();
 
     // Binance
     builder.Services.AddSingleton<IBinanceClient, BinanceClientAdapter>();
@@ -58,6 +59,8 @@ try
     builder.Services.AddSingleton<ITelegramCommand, HistoryCommand>();
     builder.Services.AddSingleton<ITelegramCommand, StrategyCommand>();
     builder.Services.AddSingleton<ITelegramCommand, HelpCommand>();
+    builder.Services.AddSingleton<ITelegramCommand, DepositCommand>();
+    builder.Services.AddSingleton<ITelegramCommand, WithdrawCommand>();
 
     // Strategy
     builder.Services.AddSingleton<DcaRebalancingStrategy>();
