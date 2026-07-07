@@ -39,6 +39,7 @@ public sealed class CashFlowRepository : ICashFlowRepository
     {
         return await _db.CashFlows
             .OrderByDescending(c => c.Timestamp)
+            .ThenByDescending(c => c.Id)
             .Take(limit)
             .Select(c => new CashFlowRecord
             {

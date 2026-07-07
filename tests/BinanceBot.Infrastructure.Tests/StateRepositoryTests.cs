@@ -67,5 +67,20 @@ public class StateRepositoryTests : IDisposable
         result.BtcBalance.Should().Be(2m);
     }
 
+    [Fact]
+    public async Task Save_OnExistingRow_ShouldNotOverwriteInitialBalance()
+    {
+        // First save creates the row with the baseline.
+        await _repo.SaveAsync(new BotStateData { InitialBalanceEur = 340m, ActiveStrategy = "x" });
+
+        // A later save carrying a different InitialBalanceEur must NOT change it —
+        // only CashFlowRepository.ApplyAsync mutates the baseline after creation.
+        await _repo.SaveAsync(new BotStateData { InitialBalanceEur = 999m, ActiveStrategy = "y" });
+
+        var result = await _repo.GetAsync();
+        result!.InitialBalanceEur.Should().Be(340m);
+        result.ActiveStrategy.Should().Be("y");
+    }
+
     public void Dispose() => _db.Dispose();
 }

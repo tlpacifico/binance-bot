@@ -32,6 +32,7 @@ public sealed class StateRepository : IStateRepository
     public async Task SaveAsync(BotStateData state, CancellationToken ct = default)
     {
         var entity = await _db.BotState.FindAsync([1], ct);
+        var isNew = entity is null;
         if (entity is null)
         {
             entity = new BotStateEntity { Id = 1 };
@@ -41,7 +42,11 @@ public sealed class StateRepository : IStateRepository
         entity.ActiveStrategy = state.ActiveStrategy;
         entity.BtcBalance = state.BtcBalance;
         entity.EurBalance = state.EurBalance;
-        entity.InitialBalanceEur = state.InitialBalanceEur;
+        // InitialBalanceEur (P&L baseline / net capital) is set once when the row is created.
+        // After that, CashFlowRepository.ApplyAsync is the SOLE writer (deposits/withdrawals),
+        // so the trading engine's periodic full-state saves can never clobber a cash-flow adjustment.
+        if (isNew)
+            entity.InitialBalanceEur = state.InitialBalanceEur;
         entity.LastTradePrice = state.LastTradePrice;
         entity.LastRebalanceTimestamp = state.LastRebalanceTimestamp;
         entity.RunState = state.RunState.ToString();
