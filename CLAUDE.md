@@ -26,7 +26,7 @@ Strategies implement `ITradingStrategy` and are registered in `StrategyResolver`
 
 ### Telegram Commands
 
-`/status`, `/start`, `/stop`, `/rebalance`, `/settings`, `/history [n]`, `/strategy [name]`, `/help`. Authorization via ChatId. Commands implement `ITelegramCommand`.
+`/status`, `/start`, `/stop`, `/rebalance`, `/settings`, `/history [n]`, `/strategy [name]`, `/deposit <eur>`, `/withdraw <eur>`, `/help`. Authorization via ChatId. Commands implement `ITelegramCommand`.
 
 ### State Persistence
 
