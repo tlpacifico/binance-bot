@@ -7,6 +7,7 @@ public class BotDbContext : DbContext
 {
     public DbSet<TradeEntity> Trades => Set<TradeEntity>();
     public DbSet<BotStateEntity> BotState => Set<BotStateEntity>();
+    public DbSet<CashFlowEntity> CashFlows => Set<CashFlowEntity>();
 
     public BotDbContext(DbContextOptions<BotDbContext> options) : base(options) { }
 
@@ -31,6 +32,14 @@ public class BotDbContext : DbContext
             entity.Property(e => e.LastTradePrice).HasColumnType("numeric(18,8)");
             entity.Property(e => e.Last24hLowPrice).HasColumnType("numeric(18,8)");
             entity.Property(e => e.Last24hHighPrice).HasColumnType("numeric(18,8)");
+        });
+
+        modelBuilder.Entity<CashFlowEntity>(entity =>
+        {
+            entity.ToTable("CashFlows");
+            entity.HasIndex(e => e.Timestamp);
+            entity.Property(e => e.AmountEur).HasColumnType("numeric(18,8)");
+            entity.Property(e => e.BalanceAfter).HasColumnType("numeric(18,8)");
         });
     }
 }

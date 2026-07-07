@@ -342,6 +342,7 @@ git commit -m "feat: add CashFlows table migration"
 ### Task 3: `/deposit` and `/withdraw` Telegram commands
 
 **Files:**
+- Create: `src/BinanceBot.Infrastructure/Telegram/Commands/CashFlowArgs.cs` (shared amount parser)
 - Create: `src/BinanceBot.Infrastructure/Telegram/Commands/DepositCommand.cs`
 - Create: `src/BinanceBot.Infrastructure/Telegram/Commands/WithdrawCommand.cs`
 - Modify: `src/BinanceBot.Worker/Program.cs` (register repo scoped + two commands)
@@ -349,7 +350,7 @@ git commit -m "feat: add CashFlows table migration"
 
 **Interfaces:**
 - Consumes: `ICashFlowRepository`, `IStateRepository`, `CashFlowType`, `CashFlowResult` from Task 1; `ITelegramCommand` (existing); the `CreateScopeFactory` test helper pattern from `TelegramCommandTests.cs`.
-- Produces: `DepositCommand` (`Name => "/deposit"`) and `WithdrawCommand` (`Name => "/withdraw"`), auto-listed by the existing `HelpCommand`.
+- Produces: `CashFlowArgs.TryParseAmount(string[], out decimal)`; `DepositCommand` (`Name => "/deposit"`) and `WithdrawCommand` (`Name => "/withdraw"`), auto-listed by the existing `HelpCommand`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -444,12 +445,33 @@ public class CashFlowCommandTests
 Run: `dotnet test tests/BinanceBot.Worker.Tests --filter CashFlowCommandTests`
 Expected: FAIL — `DepositCommand`/`WithdrawCommand` unknown.
 
-- [ ] **Step 3: Implement `DepositCommand`**
+- [ ] **Step 3: Implement the shared amount parser**
+
+`src/BinanceBot.Infrastructure/Telegram/Commands/CashFlowArgs.cs`:
+
+```csharp
+using System.Globalization;
+
+namespace BinanceBot.Infrastructure.Telegram.Commands;
+
+internal static class CashFlowArgs
+{
+    /// <summary>Parses args[0] as a positive EUR amount (accepts ',' or '.' as the decimal separator).</summary>
+    public static bool TryParseAmount(string[] args, out decimal amount)
+    {
+        amount = 0m;
+        if (args.Length == 0) return false;
+        var raw = args[0].Replace(',', '.');
+        return decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out amount) && amount > 0m;
+    }
+}
+```
+
+- [ ] **Step 4: Implement `DepositCommand`**
 
 `src/BinanceBot.Infrastructure/Telegram/Commands/DepositCommand.cs`:
 
 ```csharp
-using System.Globalization;
 using BinanceBot.Core.Enums;
 using BinanceBot.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
@@ -467,7 +489,7 @@ public sealed class DepositCommand : ITelegramCommand
 
     public async Task<string> ExecuteAsync(string[] args, CancellationToken ct = default)
     {
-        if (!TryParseAmount(args, out var amount))
+        if (!CashFlowArgs.TryParseAmount(args, out var amount))
             return "❌ Uso: /deposit <valor em EUR maior que 0>";
 
         using var scope = _scopeFactory.CreateScope();
@@ -477,23 +499,14 @@ public sealed class DepositCommand : ITelegramCommand
         return $"✅ Depósito de €{amount:N2} registrado.\n"
              + $"Capital aportado: €{result.OldBaseline:N2} → €{result.NewBaseline:N2}";
     }
-
-    private static bool TryParseAmount(string[] args, out decimal amount)
-    {
-        amount = 0m;
-        if (args.Length == 0) return false;
-        var raw = args[0].Replace(',', '.');
-        return decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out amount) && amount > 0m;
-    }
 }
 ```
 
-- [ ] **Step 4: Implement `WithdrawCommand`**
+- [ ] **Step 5: Implement `WithdrawCommand`**
 
 `src/BinanceBot.Infrastructure/Telegram/Commands/WithdrawCommand.cs`:
 
 ```csharp
-using System.Globalization;
 using BinanceBot.Core.Enums;
 using BinanceBot.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
@@ -511,7 +524,7 @@ public sealed class WithdrawCommand : ITelegramCommand
 
     public async Task<string> ExecuteAsync(string[] args, CancellationToken ct = default)
     {
-        if (!TryParseAmount(args, out var amount))
+        if (!CashFlowArgs.TryParseAmount(args, out var amount))
             return "❌ Uso: /withdraw <valor em EUR maior que 0>";
 
         using var scope = _scopeFactory.CreateScope();
@@ -529,18 +542,10 @@ public sealed class WithdrawCommand : ITelegramCommand
         return $"✅ Saque de €{amount:N2} registrado.\n"
              + $"Capital aportado: €{result.OldBaseline:N2} → €{result.NewBaseline:N2}";
     }
-
-    private static bool TryParseAmount(string[] args, out decimal amount)
-    {
-        amount = 0m;
-        if (args.Length == 0) return false;
-        var raw = args[0].Replace(',', '.');
-        return decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out amount) && amount > 0m;
-    }
 }
 ```
 
-- [ ] **Step 5: Register the repository and commands in `Program.cs`**
+- [ ] **Step 6: Register the repository and commands in `Program.cs`**
 
 In `src/BinanceBot.Worker/Program.cs`, after `builder.Services.AddScoped<IStateRepository, StateRepository>();` (line 43) add:
 
@@ -555,15 +560,15 @@ and after `builder.Services.AddSingleton<ITelegramCommand, HelpCommand>();` (lin
     builder.Services.AddSingleton<ITelegramCommand, WithdrawCommand>();
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [ ] **Step 7: Run tests to verify they pass**
 
 Run: `dotnet test tests/BinanceBot.Worker.Tests --filter CashFlowCommandTests`
 Expected: PASS (7 test cases: 1 deposit-ok, 4 deposit-invalid, 1 withdraw-ok, 1 withdraw-guard).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/BinanceBot.Infrastructure/Telegram/Commands/DepositCommand.cs src/BinanceBot.Infrastructure/Telegram/Commands/WithdrawCommand.cs src/BinanceBot.Worker/Program.cs tests/BinanceBot.Worker.Tests/CashFlowCommandTests.cs
+git add src/BinanceBot.Infrastructure/Telegram/Commands/CashFlowArgs.cs src/BinanceBot.Infrastructure/Telegram/Commands/DepositCommand.cs src/BinanceBot.Infrastructure/Telegram/Commands/WithdrawCommand.cs src/BinanceBot.Worker/Program.cs tests/BinanceBot.Worker.Tests/CashFlowCommandTests.cs
 git commit -m "feat: /deposit and /withdraw Telegram commands"
 ```
 
